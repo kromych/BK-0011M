@@ -1,0 +1,5 @@
+# BK-0011M BASIC, ROM page 1, lower half (100000-117777).
+
+code 100000 BASIC1 ; NOP: autostart marker for the BOS ROM-page scan
+head 100000 BASIC page 1. The first word is NOP (000240): the BOS ROM scan only
+head 100000 calls ROM page 1 at 100000 when it starts with this marker.

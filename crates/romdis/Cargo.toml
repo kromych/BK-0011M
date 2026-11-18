@@ -1,0 +1,10 @@
+[package]
+name = "romdis"
+version = "0.1.0"
+description = "Commented disassembly of the BK-0011M ROMs"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+vm1 = { path = "../vm1" }

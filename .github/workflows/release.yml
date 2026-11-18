@@ -1,0 +1,57 @@
+name: Release
+
+# Push a tag such as v0.1.0 to build the emulator for each platform and
+# attach the archives to a GitHub release of that tag. The ROMs are not
+# included (see the README).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Linux packages for the window, sound, clipboard and gamepads
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libasound2-dev libx11-dev libxkbcommon-dev libwayland-dev libxcursor-dev libxrandr-dev libxi-dev libudev-dev
+      - name: Build
+        run: cargo build --release --locked -p bk-desktop --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          name=bk-${GITHUB_REF_NAME}-${{ matrix.target }}
+          mkdir "$name"
+          exe=target/${{ matrix.target }}/release/bk
+          if [ "${{ runner.os }}" = Windows ]; then exe="$exe.exe"; fi
+          cp "$exe" README.md LICENSE "$name"/
+          if [ "${{ runner.os }}" = Windows ]; then
+            7z a "$name.zip" "$name" > /dev/null
+            echo "ASSET=$name.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "$name.tar.gz" "$name"
+            echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}

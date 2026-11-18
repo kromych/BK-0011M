@@ -1,0 +1,21 @@
+START:  MOV #1000, SP
+        MOV #EMTH, @#30
+        MOV #200, @#32
+        MOV #TRH, @#14
+        MOV #200, @#16
+        MOV #20, -(SP)        ; PSW with T set
+        MOV #TGT, -(SP)
+        RTT                   ; the trace trap comes after the next instruction
+TGT:    EMT 1                 ; executes with T set
+AFTER:  NOP
+        MOV #177777, @#177000
+        BR .
+EMTH:   MOV #1, @#177000      ; in the EMT handler
+        MOV (SP), @#177000    ; its return address
+        MOV 2(SP), @#177000   ; and PSW
+        RTI
+TRH:    MOV #3, @#177000      ; in the trace handler
+        MOV (SP), @#177000
+        MOV 2(SP), @#177000
+        BIC #20, 2(SP)        ; stop tracing
+        RTI

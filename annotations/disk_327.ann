@@ -1,0 +1,11 @@
+# Floppy controller (KNGMD) ROM 327, 160000-167777: disk driver and boot
+# loader. Entry points from the BOS manual 00015-01.32.01 §3; registers
+# from the BK-0011 driver manual 00008-01.32.01 §1.3.6.1.
+
+code 160000 BABOOT ; .BABOOT: boot from the floppy automatically
+code 160002 BBOOT ; .BBOOT: boot from a chosen drive
+code 160004 BBLCK ; .BBLCK: read/write by block number
+code 160006 BSECT ; .BSECT: read/write by track and sector
+code 160010 BDINI ; .BDINI: initialize the floppy driver
+code 160012 BFORM ; .BFORM: format a track
+head 160000 Driver entry points (BOS manual §3), each a branch or jump.

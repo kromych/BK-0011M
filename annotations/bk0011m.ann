@@ -1,0 +1,217 @@
+# BK-0011M BOS: low memory and system calls (applies to BK-0011M listings).
+# Source: BOS system programmer's manual 00015-01.32.01 (1990): §1.4 low
+# memory, §2.3 and §3 system calls. Russian text in notes is quoted from it.
+
+# Low memory used by BOS (vectors themselves are left numeric)
+name 40 GOADDR ; start address for the monitor's G command
+name 52 RETCOD ; low byte: return code of system calls
+name 110 KBDPRG ; keyboard program vector (user termination routine)
+name 114 PAGCPY ; copy of the last paging-register write
+name 116 TAPCPY ; copy of the last tape-register write
+name 166 EMTUSR ; EMT pseudo-vector: EMTs that BOS does not handle
+
+# BOS system calls: JSR PC,@slot, or EMT n (slot = 140010 + 2n).
+# Each slot in the table at 140010 holds the routine address.
+name 140010 J$BINIT ; slot: BOS .BINIT, initialize BOS
+name 150414 BINIT ; BOS .BINIT (EMT 0): initialize BOS (инициализация БОС)
+emt 0 BINIT ; initialize BOS
+name 140012 J$BEXIT ; slot: BOS .BEXIT, exit to the keyboard monitor
+name 147712 BEXIT ; BOS .BEXIT (EMT 1): exit to the keyboard monitor (выход в клавиатурный монитор)
+emt 1 BEXIT ; exit to the keyboard monitor
+name 140014 J$BTRPS ; slot: BOS .BTRPS, intercept vector 4
+name 147742 BTRPS ; BOS .BTRPS (EMT 2): intercept vector 4 (перехват 4 вектора)
+emt 2 BTRPS ; intercept vector 4
+name 140016 J$BTIM ; slot: BOS .BTIM, control the timer
+name 150070 BTIM ; BOS .BTIM (EMT 3): control the timer (управление таймером)
+emt 3 BTIM ; control the timer
+name 140020 J$BEMT ; slot: BOS .BEMT, control EMT handling
+name 152202 BEMT ; BOS .BEMT (EMT 4): control EMT handling (управление обработкой EMT)
+emt 4 BEMT ; control EMT handling
+name 150164 BRESV ; target of the reserved slots ("зарезервировано")
+name 140030 J$BMEM ; slot: BOS .BMEM, read memory status
+name 150474 BMEM ; BOS .BMEM (EMT 10): read memory status (чтение состояния памяти)
+emt 10 BMEM ; read memory status
+name 140032 J$BTEST ; slot: BOS .BTEST, read page status
+name 150504 BTEST ; BOS .BTEST (EMT 11): read page status (чтение статуса страницы)
+emt 11 BTEST ; read page status
+name 140034 J$BPAGE ; slot: BOS .BPAGE, map a RAM/ROM page
+name 150514 BPAGE ; BOS .BPAGE (EMT 12): map a RAM/ROM page (подключение страницы ОЗУ/ПЗУ)
+emt 12 BPAGE ; map a RAM/ROM page
+name 140036 J$BWORK ; slot: BOS .BWORK, set/read the working page
+name 150530 BWORK ; BOS .BWORK (EMT 13): set/read the working page (назначение/чтение рабочей страницы)
+emt 13 BWORK ; set/read the working page
+name 140040 J$BGETW ; slot: BOS .BGETW, read a word from the working page
+name 150540 BGETW ; BOS .BGETW (EMT 14): read a word from the working page (чтение слова из рабочей страницы)
+emt 14 BGETW ; read a word from the working page
+name 140042 J$BGETB ; slot: BOS .BGETB, read a byte from the working page
+name 150564 BGETB ; BOS .BGETB (EMT 15): read a byte from the working page (чтение байта из рабочей страницы)
+emt 15 BGETB ; read a byte from the working page
+name 140044 J$BPUTW ; slot: BOS .BPUTW, write a word to the working page
+name 150612 BPUTW ; BOS .BPUTW (EMT 16): write a word to the working page (запись слова в рабочую страницу)
+emt 16 BPUTW ; write a word to the working page
+name 140046 J$BPUTB ; slot: BOS .BPUTB, write a byte to the working page
+name 150654 BPUTB ; BOS .BPUTB (EMT 17): write a byte to the working page (запись байта в рабочую страницу)
+emt 17 BPUTB ; write a byte to the working page
+name 140050 J$BMOVE ; slot: BOS .BMOVE, move an array of words
+name 151140 BMOVE ; BOS .BMOVE (EMT 20): move an array of words (пересылка массива слов)
+emt 20 BMOVE ; move an array of words
+name 140052 J$BMOVB ; slot: BOS .BMOVB, move an array of bytes
+name 151156 BMOVB ; BOS .BMOVB (EMT 21): move an array of bytes (пересылка массива байтов)
+emt 21 BMOVB ; move an array of bytes
+name 140054 J$BJSR ; slot: BOS .BJSR, call a subroutine in the working page
+name 151006 BJSR ; BOS .BJSR (no EMT): call a subroutine in the working page (вызов подпрограммы из рабочей страницы)
+name 140056 J$BJMP ; slot: BOS .BJMP, jump to the working page, no return
+name 151114 BJMP ; BOS .BJMP (EMT 23): jump to the working page, no return (переход в рабочую страницу без возврата)
+emt 23 BJMP ; jump to the working page, no return
+name 140070 J$BKINI ; slot: BOS .BKINI, initialize the keyboard driver
+name 146704 BKINI ; BOS .BKINI (EMT 30): initialize the keyboard driver (инициализация драйвера клавиатуры)
+emt 30 BKINI ; initialize the keyboard driver
+name 140072 J$BKSET ; slot: BOS .BKSET, set keyboard driver mode
+name 146752 BKSET ; BOS .BKSET (EMT 31): set keyboard driver mode (установка режима драйвера клавиатуры)
+emt 31 BKSET ; set keyboard driver mode
+name 140074 J$BKGET ; slot: BOS .BKGET, read keyboard driver mode
+name 146764 BKGET ; BOS .BKGET (EMT 32): read keyboard driver mode (чтение режима драйвера клавиатуры)
+emt 32 BKGET ; read keyboard driver mode
+name 140076 J$BTTIN ; slot: BOS .BTTIN, read a character, waiting
+name 147550 BTTIN ; BOS .BTTIN (EMT 33): read a character, waiting (ввод символа с ожиданием)
+emt 33 BTTIN ; read a character, waiting
+name 140100 J$BINKEY ; slot: BOS .BINKEY, read a character, not waiting
+name 147406 BINKEY ; BOS .BINKEY (EMT 34): read a character, not waiting (ввод символа без ожидания)
+emt 34 BINKEY ; read a character, not waiting
+name 140102 J$BGLIN ; slot: BOS .BGLIN, read a line with editing
+name 151336 BGLIN ; BOS .BGLIN (EMT 35): read a line with editing (ввод строки с редактированием)
+emt 35 BGLIN ; read a line with editing
+name 140104 J$BEDIT ; slot: BOS .BEDIT, edit an existing line
+name 151266 BEDIT ; BOS .BEDIT (EMT 36): edit an existing line (редактирование существующей строки)
+emt 36 BEDIT ; edit an existing line
+name 140106 J$BKRES ; slot: BOS .BKRES, clear the keyboard buffer
+name 147636 BKRES ; BOS .BKRES (EMT 37): clear the keyboard buffer (сброс буфера клавиатуры)
+emt 37 BKRES ; clear the keyboard buffer
+name 140110 J$BSFUN ; slot: BOS .BSFUN, set function keys
+name 147672 BSFUN ; BOS .BSFUN (EMT 40): set function keys (установка функциональных клавиш)
+emt 40 BSFUN ; set function keys
+name 140112 J$BGFUN ; slot: BOS .BGFUN, read function keys
+name 147702 BGFUN ; BOS .BGFUN (EMT 41): read function keys (чтение функциональных клавиш)
+emt 41 BGFUN ; read function keys
+name 140130 J$BTINI ; slot: BOS .BTINI, initialize the screen driver
+name 143456 BTINI ; BOS .BTINI (EMT 50): initialize the screen driver (инициализация драйвера экрана)
+emt 50 BTINI ; initialize the screen driver
+name 140132 J$BTSET ; slot: BOS .BTSET, set screen driver mode
+name 143446 BTSET ; BOS .BTSET (EMT 51): set screen driver mode (установка режима драйвера экрана)
+emt 51 BTSET ; set screen driver mode
+name 140134 J$BTGET ; slot: BOS .BTGET, read screen driver mode
+name 143434 BTGET ; BOS .BTGET (EMT 52): read screen driver mode (чтение режима драйвера экрана)
+emt 52 BTGET ; read screen driver mode
+name 140136 J$BSCOL ; slot: BOS .BSCOL, set colors
+name 143274 BSCOL ; BOS .BSCOL (EMT 53): set colors (установка цветов)
+emt 53 BSCOL ; set colors
+name 140140 J$BGCOL ; slot: BOS .BGCOL, read colors
+name 143414 BGCOL ; BOS .BGCOL (EMT 54): read colors (чтение цветов)
+emt 54 BGCOL ; read colors
+name 140142 J$BPAL ; slot: BOS .BPAL, set/read the palette
+name 150000 BPAL ; BOS .BPAL (EMT 55): set/read the palette (установка/чтение палитры)
+emt 55 BPAL ; set/read the palette
+name 140144 J$BBUF ; slot: BOS .BBUF, switch screen buffers
+name 143466 BBUF ; BOS .BBUF (EMT 56): switch screen buffers (переключение буферов экрана)
+emt 56 BBUF ; switch screen buffers
+name 140146 J$BSPOS ; slot: BOS .BSPOS, set the text cursor position
+name 143476 BSPOS ; BOS .BSPOS (EMT 57): set the text cursor position (установка координат Алфавитно-цифрового курсора)
+emt 57 BSPOS ; set the text cursor position
+name 140150 J$BGPOS ; slot: BOS .BGPOS, read the text cursor position
+name 143560 BGPOS ; BOS .BGPOS (EMT 60): read the text cursor position (чтение координат Алфавитно-цифрового курсора)
+emt 60 BGPOS ; read the text cursor position
+name 140152 J$BSCRL ; slot: BOS .BSCRL, scroll the screen
+name 143572 BSCRL ; BOS .BSCRL (EMT 61): scroll the screen (сдвиг экрана)
+emt 61 BSCRL ; scroll the screen
+name 140154 J$BCLS ; slot: BOS .BCLS, clear the screen
+name 143622 BCLS ; BOS .BCLS (EMT 62): clear the screen (очистка экрана)
+emt 62 BCLS ; clear the screen
+name 140156 J$BTOUT ; slot: BOS .BTOUT, print a character
+name 143070 BTOUT ; BOS .BTOUT (EMT 63): print a character (вывод символа)
+emt 63 BTOUT ; print a character
+name 140160 J$BPRIN ; slot: BOS .BPRIN, print a string (RT-11 format)
+name 143142 BPRIN ; BOS .BPRIN (EMT 64): print a string (RT-11 format) (вывод строки символов, (формат RT - 11))
+emt 64 BPRIN ; print a string (RT-11 format)
+name 140162 J$BSTR ; slot: BOS .BSTR, print a string
+name 143130 BSTR ; BOS .BSTR (EMT 65): print a string (вывод строки символов)
+emt 65 BSTR ; print a string
+name 140164 J$BSGRF ; slot: BOS .BSGRF, set the graphics position
+name 152470 BSGRF ; BOS .BSGRF (EMT 66): set the graphics position (установка текущих графических координат)
+emt 66 BSGRF ; set the graphics position
+name 140166 J$BGGRF ; slot: BOS .BGGRF, read the graphics position
+name 152506 BGGRF ; BOS .BGGRF (EMT 67): read the graphics position (чтение текущих графических координат)
+emt 67 BGGRF ; read the graphics position
+name 140170 J$BSCGR ; slot: BOS .BSCGR, set the graphics color
+name 152524 BSCGR ; BOS .BSCGR (EMT 70): set the graphics color (установка графического цвета)
+emt 70 BSCGR ; set the graphics color
+name 140172 J$BGCGR ; slot: BOS .BGCGR, read the graphics color
+name 152546 BGCGR ; BOS .BGCGR (EMT 71): read the graphics color (чтение графического цвета)
+emt 71 BGCGR ; read the graphics color
+name 140174 J$BSMOD ; slot: BOS .BSMOD, set/read the drawing mode
+name 152564 BSMOD ; BOS .BSMOD (EMT 72): set/read the drawing mode (установка/чтение режима рисования)
+emt 72 BSMOD ; set/read the drawing mode
+name 140176 J$BSPNT ; slot: BOS .BSPNT, draw a point
+name 152230 BSPNT ; BOS .BSPNT (EMT 73): draw a point (вывод графической точки)
+emt 73 BSPNT ; draw a point
+name 140200 J$BGPNT ; slot: BOS .BGPNT, read a point's color
+name 152372 BGPNT ; BOS .BGPNT (EMT 74): read a point's color (чтение цвета графической точки)
+emt 74 BGPNT ; read a point's color
+name 140202 J$BVECT ; slot: BOS .BVECT, draw a line
+name 152460 BVECT ; BOS .BVECT (EMT 75): draw a line (вывод вектора)
+emt 75 BVECT ; draw a line
+name 140204 J$BRECT ; slot: BOS .BRECT, draw a filled rectangle
+name 153424 BRECT ; BOS .BRECT (EMT 76): draw a filled rectangle (вывод закрашенного прямоугольника)
+emt 76 BRECT ; draw a filled rectangle
+name 140206 J$BCIRC ; slot: BOS .BCIRC, draw an arc or circle
+name 152722 BCIRC ; BOS .BCIRC (EMT 77): draw an arc or circle (вывод дуги или окружности)
+emt 77 BCIRC ; draw an arc or circle
+name 140210 J$BFILL ; slot: BOS .BFILL, flood-fill a bounded area
+name 154202 BFILL ; BOS .BFILL (EMT 100): flood-fill a bounded area (закраска гранично - определённой области)
+emt 100 BFILL ; flood-fill a bounded area
+name 140212 J$BSOUN ; slot: BOS .BSOUN, make a sound
+name 143636 BSOUN ; BOS .BSOUN (EMT 101): make a sound (выдача звука)
+emt 101 BSOUN ; make a sound
+name 140214 J$BSWIN ; slot: BOS .BSWIN, set the graphics window
+name 153000 BSWIN ; BOS .BSWIN (EMT 102): set the graphics window (установка графического окна)
+emt 102 BSWIN ; set the graphics window
+name 140216 J$BGWIN ; slot: BOS .BGWIN, read the graphics window
+name 153134 BGWIN ; BOS .BGWIN (EMT 103): read the graphics window (чтение графического окна)
+emt 103 BGWIN ; read the graphics window
+name 140220 J$SECR ; slot for the undocumented call ("секретный вызов")
+name 146404 BSECRT ; undocumented system call ("секретный вызов")
+name 140222 J$BSTYP ; slot: BOS .BSTYP, set the line style
+name 152614 BSTYP ; BOS .BSTYP (EMT 105): set the line style (установка типа вектора)
+emt 105 BSTYP ; set the line style
+name 140224 J$BGTYP ; slot: BOS .BGTYP, read the line style
+name 152660 BGTYP ; BOS .BGTYP (EMT 106): read the line style (чтение типа вектора)
+emt 106 BGTYP ; read the line style
+name 140226 J$BGOSET ; slot: BOS .BGOSET, set/read graphics text orientation
+name 153166 BGOSET ; BOS .BGOSET (EMT 107): set/read graphics text orientation (установка/чтение ориентации графических символов)
+emt 107 BGOSET ; set/read graphics text orientation
+name 140230 J$BGOUT ; slot: BOS .BGOUT, draw a graphics character
+name 153226 BGOUT ; BOS .BGOUT (EMT 110): draw a graphics character (графический вывод символа)
+emt 110 BGOUT ; draw a graphics character
+name 140240 J$BMOT ; slot: BOS .BMOT, control the tape recorder motor
+name 154550 BMOT ; BOS .BMOT (EMT 114): control the tape recorder motor (управление двигателем магнитофона)
+emt 114 BMOT ; control the tape recorder motor
+name 140242 J$BMB10 ; slot: BOS .BMB10, BK-0010-style call
+name 154614 BMB10 ; BOS .BMB10 (EMT 115): BK-0010-style call (вызов формата БК-0010)
+emt 115 BMB10 ; BK-0010-style call
+name 140260 J$BPINI ; slot: BOS .BPINI, initialize the printer driver
+name 156560 BPINI ; BOS .BPINI (EMT 124): initialize the printer driver (инициализация драйвера принтера)
+emt 124 BPINI ; initialize the printer driver
+name 140262 J$BPSET ; slot: BOS .BPSET, set printing mode
+name 156612 BPSET ; BOS .BPSET (EMT 125): set printing mode (установка режима печати)
+emt 125 BPSET ; set printing mode
+name 140264 J$BPGET ; slot: BOS .BPGET, read printing mode
+name 156664 BPGET ; BOS .BPGET (EMT 126): read printing mode (чтение режима печати)
+emt 126 BPGET ; read printing mode
+name 140266 J$BPOUT ; slot: BOS .BPOUT, print a character on the printer
+name 156736 BPOUT ; BOS .BPOUT (EMT 127): print a character on the printer (вывод символа на печать)
+emt 127 BPOUT ; print a character on the printer
+name 140270 J$BPRDY ; slot: BOS .BPRDY, check whether the printer is ready
+name 156676 BPRDY ; BOS .BPRDY (EMT 130): check whether the printer is ready (определение готовности принтера)
+emt 130 BPRDY ; check whether the printer is ready
+name 140272 J$BPPOS ; slot: BOS .BPPOS, read the print head position
+name 156724 BPPOS ; BOS .BPPOS (EMT 131): read the print head position (определение позиции печатающей головки)
+emt 131 BPPOS ; read the print head position

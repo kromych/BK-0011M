@@ -1,0 +1,6 @@
+# BK-0011M MSTD test and diagnostics ROM, at 160000 when no floppy
+# controller is fitted. Described in the manual «Мониторная система
+# тестовой диагностики» 00015-01.34.01.
+
+code 160000 MSTD ; NOP: autostart marker
+head 160000 MSTD test ROM.

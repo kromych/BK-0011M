@@ -1,0 +1,10 @@
+[package]
+name = "bk"
+version = "0.1.0"
+description = "Elektronika BK-0011M machine: memory map, I/O devices, video"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+vm1 = { path = "../vm1" }

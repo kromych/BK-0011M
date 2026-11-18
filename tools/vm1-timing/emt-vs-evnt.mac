@@ -1,0 +1,18 @@
+START:  MOV #1000, SP
+        MOV #EMTH, @#30
+        MOV #200, @#32        ; EMT vector PSW: priority bit set, as the BK monitor's
+        MOV #EVH, @#100
+        MOV #200, @#102
+        MTPS #0
+        NOP
+EMTI:   EMT 1                 ; the harness raises EVNT while fetching this
+AFTER:  NOP
+        NOP
+        MOV #177777, @#177000 ; done
+        BR .
+EMTH:   MOV #1, @#177000      ; in the EMT handler
+        MOV (SP), @#177000    ; its return address
+        RTI
+EVH:    MOV #2, @#177000      ; in the EVNT handler
+        MOV (SP), @#177000
+        RTI

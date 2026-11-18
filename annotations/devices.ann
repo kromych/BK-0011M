@@ -1,0 +1,14 @@
+# Device registers, the same on the BK-0010 and BK-0011M (applies to every
+# listing). Sources: BOS system programmer's manual 00015-01.32.01 §1.2 and
+# the BK-0011 driver manual 00008-01.32.01 §1.3.6.1.
+
+name 177130 FDCCSR ; floppy controller: command (write) / status (read)
+name 177132 FDCDAT ; floppy controller: data
+name 177660 KBDCSR ; keyboard status: bit 7 key ready, bit 6 interrupt mask
+name 177662 KBDDAT ; read: key code; write: palette, 50 Hz timer off (bit 14), screen buffer (bit 15)
+name 177664 SCROLL ; scroll offset (330 = none); bit 9 = full screen
+name 177706 TMRLD ; VM1 timer: reload value
+name 177710 TMRCNT ; VM1 timer: counter
+name 177712 TMRCSR ; VM1 timer: control
+name 177714 PORT ; parallel port: read = input, write = output
+name 177716 SEL1 ; system register: read = SEL1; write = paging (bit 11 set) or tape latch

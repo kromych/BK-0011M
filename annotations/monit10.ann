@@ -1,0 +1,14 @@
+# BK-0010 monitor ROM, 100000-117777. Call names come from bk0010.ann.
+
+code 100000 MONCLD ; power-on entry: jump to the cold start
+head 100000 Power-on entry. The first two words, the jump to the cold start,
+head 100000 double as the (unused) slots for EMT 0 and EMT 2.
+
+ptrs 100004 43 EMTTAB
+head 100004 EMT table: EMT n uses the word at 100000+n (EMT 4-110). EMT 52-110
+head 100004 point into the ROM at 160000.
+
+code 100112 EMTDSP
+head 100112 EMT dispatcher: the EMT instruction's low byte is a byte offset into
+head 100112 the table at 100000. The routine is called with JSR PC; the
+head 100112 dispatcher returns to the program with RTI.

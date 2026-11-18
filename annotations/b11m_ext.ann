@@ -1,0 +1,13 @@
+# BK-0011M ROM page 1, upper half (120000-137777): the second part of BOS,
+# with the keyboard monitor. BASIC page 1 occupies 100000-117777 of the
+# same ROM page.
+
+code 120000 ; RTS PC: the BOS ROM-page scan calls 120000 and returns at once
+head 120000 Entry used by the BOS ROM-page scan: returns immediately.
+
+code 120002 MONMAI
+head 120002 Keyboard monitor, entered from BOS at 140766 (MONITR).
+
+text 132372 131 BANNER ; power-on banner, printed by the BOS cold start
+head 132372 Power-on banner: ESC Y (cursor position), a box of pseudo-graphic
+head 132372 characters, "Монитор БК-0011 В1.8" (Monitor BK-0011 v1.8), zero-terminated.

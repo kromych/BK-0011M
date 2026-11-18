@@ -1,0 +1,56 @@
+# BK-0011M BOS ROM, 140000-157777. System-call names come from common.ann.
+# Section comments are from reading the code, checked against the BOS
+# manual 00015-01.32.01 where it says something about the same thing.
+
+code 140000 RESET ; power-on entry: the VM1 starts at SEL1's high byte, 140000
+head 140000 Power-on: mask interrupts and go to the cold start.
+
+ptrs 140010 134
+head 140010 System call table (BOS manual §2.3): one slot per EMT 0-133.
+head 140010 JSR PC,@slot calls a routine directly; EMT n goes through EMTDSP.
+
+code 140300 COLD
+head 140300 Cold start. Stack at 1000; system RAM page 7 at 040000 and ROM
+head 140300 page 1 at 100000; set up low memory (INIVEC); print the banner
+head 140300 (BANNER, in ROM page 1) and scroll it up the screen.
+note 140370 user mapping copy: 040000 = RAM page 5 (screen 0), 100000 = RAM page 4
+note 140376 key held down at power-on?
+note 140404 yes: skip booting, go to the monitor
+note 140406 floppy controller found?
+note 140414 .BABOOT: boot from floppy
+head 140420 Scan ROM pages 3, 2, 1, 0 (R0 = 413 down to 410). For each page that
+head 140420 exists, call 120000 if it answers, then 100000 if it answers. Page 1
+head 140420 is only called if it starts with NOP (000240), the autostart marker
+head 140420 that BASIC page 1 carries. Vector 4 catches missing ROMs meanwhile.
+
+code 140562 MONENT
+head 140562 Enter the keyboard monitor.
+
+code 140576 TRAP4 ; default handler for vector 4 and all unused vectors
+head 140576 Catch-all trap handler (INIVEC points vectors 4-376 here). SEL1
+head 140576 bit 2 is set by HALT and the STOP key but not by a bus error
+head 140576 (BOS manual §1.3): HALT/STOP go to the monitor, a bus error goes
+head 140576 to the user's .BTRPS handler if one is set. Leaves with RTT.
+note 140602 save SEL1: bit 2 = HALT or STOP rather than a bus error
+
+code 140712 MONITR
+head 140712 Keyboard monitor: take over vector 4, save the interrupted PC and
+head 140712 PSW, then continue in ROM page 1 at 120002 (MONMAI).
+
+code 150170 INIVEC
+head 150170 Set up low memory: JMP @#BEXIT at address 0, so a jump to 0 returns
+head 150170 to the monitor; every vector 4-376 -> TRAP4 at PSW 2341. Vectors 100
+head 150170 and 274 point at their own PSW word, which holds 000002 (RTI), so
+head 150170 they return at once until a driver installs a real handler.
+note 150176 address 0: JMP @#BEXIT
+note 150232 vector 100 -> 102, which holds RTI
+note 150254 vector 274 -> 276, which holds RTI
+
+code 152112 EMTDSP
+head 152112 EMT dispatcher. The low byte of the EMT instruction picks a slot in
+head 152112 the system call table (EMT 0-133). The caller's C flag is passed in,
+head 152112 and the routine's C flag passed back, through the saved PSW. Larger
+head 152112 EMT numbers go to the user's handler in EMTUSR (166), or print an
+head 152112 error and enter the monitor.
+note 152132 caller's C flag -> C
+note 152144 C -> saved PSW

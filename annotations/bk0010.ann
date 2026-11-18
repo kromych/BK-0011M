@@ -1,0 +1,47 @@
+# BK-0010 monitor ("driver-monitor system"): system calls and low memory.
+# Applies to BK-0010 ROM listings and to BK-0010 programs.
+#
+# The EMT table comes from the monitor ROM itself: EMT n (n even) calls the
+# routine whose address is the word at 100000+n. EMT 4-50 go to the monitor;
+# EMT 52-110 go to the ROM at 160000 (BASIC part 3 on the BK-0010.01, the
+# test ROM on the BK-0010).
+#
+# Meanings marked "checked" are confirmed by running test programs
+# (crates/bk/tests/firmware.rs, bk0010_monitor_calls). The others are the
+# usual meanings of these calls and haven't been checked against the BK-0010
+# driver-monitor manual (00001-01.32.03, only available as a scan).
+
+name 101010 KEYIN ; EMT 6 (checked): wait for a key, code in R0
+name 101724 GETLIN ; EMT 10: read a line from the keyboard
+name 102004 SETFK ; EMT 12: set up a function key
+name 100140 TTINIT ; EMT 14 (checked): initialize screen and keyboard, clear the screen
+name 102234 PUTC ; EMT 16 (checked): print the character in R0
+name 107050 PUTS ; EMT 20 (checked): print R2 characters from the address in R1
+name 107106 PUTSRV ; EMT 22: print a character in the service (top) line
+name 107272 SETCUR ; EMT 24: move the cursor (R1 = column, R2 = row)
+name 107502 GETCUR ; EMT 26 (checked): cursor position: R1 = column, R2 = row
+name 107612 POINT ; EMT 30: draw or erase a point
+name 107776 VECTOR ; EMT 32: draw a line
+name 110310 STATUS ; EMT 34: read the screen/keyboard status word
+name 116076 TAPE ; EMT 36: tape operations, parameter block at R1
+
+emt 6 KEYIN ; wait for a key, code in R0 (checked)
+emt 10 GETLIN ; read a line from the keyboard
+emt 12 SETFK ; set up a function key
+emt 14 TTINIT ; initialize screen and keyboard (checked)
+emt 16 PUTC ; print the character in R0 (checked)
+emt 20 PUTS ; print R2 characters from the address in R1 (checked)
+emt 22 PUTSRV ; print a character in the service line
+emt 24 SETCUR ; move the cursor to R1, R2
+emt 26 GETCUR ; cursor position into R1, R2 (checked)
+emt 30 POINT ; draw or erase a point
+emt 32 VECTOR ; draw a line
+emt 34 STATUS ; read the screen/keyboard status word
+emt 36 TAPE ; tape operations
+
+# EMT 36 parameter block, as used by bkbtl's fast tape load (Emulator.cpp).
+name 320 TAPBLK ; EMT 36 parameter block; byte 321 = result (0 = OK)
+name 322 TAPADR ; EMT 36: load address (0 = the file's own)
+name 326 TAPNAM ; EMT 36: file name, 16 characters
+name 346 TAPSTA ; EMT 36: address the file was saved from
+name 350 TAPLEN ; EMT 36: length of the file read
