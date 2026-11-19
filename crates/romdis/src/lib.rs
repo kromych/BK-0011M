@@ -7,6 +7,8 @@
 //! assembles back into the identical ROM image.
 
 pub mod annotations;
+pub mod disk;
+pub mod inventory;
 
 use std::path::Path;
 
@@ -91,6 +93,20 @@ pub const ROMS: &[RomSpec] = &[
         annotations: "disk_327.ann",
     },
     RomSpec {
+        file: "disk_326.rom",
+        origin: 0o160000,
+        title: "Floppy controller (KNGMD) ROM 326 for the BK-0010.01: disk driver and boot loader, 160000-167777",
+        family: Family::Bk0010,
+        annotations: "disk_326.ann",
+    },
+    RomSpec {
+        file: "disk_253.rom",
+        origin: 0o160000,
+        title: "Floppy controller (KNGMD) ROM 253, another version (bk doesn't use it), 160000-167777",
+        family: Family::Bk0010,
+        annotations: "disk_253.ann",
+    },
+    RomSpec {
         file: "monit10.rom",
         origin: 0o100000,
         title: "BK-0010 monitor (driver-monitor system), 100000-117777",
@@ -169,6 +185,37 @@ pub fn load_annotations(
         ann.add(&src)
             .map_err(|e| format!("{}: {e}", path.display()))?;
     }
+    if let Some(name) = own {
+        let path = dir.join(name);
+        if let Ok(src) = std::fs::read_to_string(&path) {
+            ann.add(&src)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+    }
+    Ok(ann)
+}
+
+/// Like [`load_annotations`], for a program loaded in RAM at `origin`,
+/// `len` bytes long. The shared annotations describe the ROMs and the
+/// system's cells; inside the program's own image they don't apply (the
+/// program overwrites the cells, and a ROM there belongs to another machine
+/// or another memory page), so what they say about those addresses is left
+/// out. The program's own file applies in full.
+pub fn load_program_annotations(
+    dir: &Path,
+    family: Family,
+    own: Option<&str>,
+    origin: u16,
+    len: usize,
+) -> Result<Annotations, String> {
+    let mut ann = load_annotations(dir, family, None)?;
+    let inside =
+        |a: u16| (usize::from(origin)..usize::from(origin) + len).contains(&usize::from(a));
+    ann.names.retain(|&a, _| !inside(a));
+    ann.entries.retain(|&a| !inside(a));
+    ann.layout.retain(|&(a, _, _)| !inside(a));
+    ann.notes.retain(|&a, _| !inside(a));
+    ann.heads.retain(|&a, _| !inside(a));
     if let Some(name) = own {
         let path = dir.join(name);
         if let Ok(src) = std::fs::read_to_string(&path) {

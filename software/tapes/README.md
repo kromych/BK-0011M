@@ -8,7 +8,8 @@ are: `bk --bk0010 --tape software/tapes/survey-4.mp3`, or `--wav2bin` to
 list what the ROM finds.
 
 `CIRCUS.BIN.tap` is a tape image in another emulator's format, which `bk`
-does not read. `../tape_komplekt17_start.wav` (the start of set 17, in
+does not read. `cargo run --release -p romdis` lists every file the ROM
+reads from these recordings in `listings/software/tapes/`. `../tape_komplekt17_start.wav` (the start of set 17, in
 WAV) is the recording the tests use.
 
 | File | First lines of its list |

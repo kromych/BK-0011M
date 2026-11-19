@@ -1,17 +1,18 @@
-//! `romdis`: write commented MACRO-11 listings of the BK ROMs and of `.bin`
-//! programs.
+//! `romdis`: write commented MACRO-11 listings of the BK ROMs and of the
+//! programs under `software/`: `.bin` files, the programs on disk images,
+//! and the files on tape recordings (see `romdis::inventory`).
 //!
-//!     cargo run -p romdis -- [--roms DIR] [--software DIR] [--annotations DIR] [--out DIR]
+//!     cargo run --release -p romdis -- [--roms DIR] [--software DIR] [--annotations DIR] [--out DIR]
 //!
-//! Defaults: ./roms, ./software, ./annotations, ./listings. Each ROM present
-//! becomes `<out>/<name>.mac`; each `.bin` program in the software directory
-//! becomes `<out>/software/<name>.mac`.
+//! Defaults: ./roms, ./software, ./annotations, ./listings. A ROM becomes
+//! `<out>/<name>.mac`; a program `<out>/software/<path>.mac`, beside a
+//! `files.txt` for each disk and tape saying what is on it.
 
 use std::path::{Path, PathBuf};
 use std::{fs, process};
 
-use romdis::annotations::Annotations;
-use romdis::{Family, Listing, ROMS, disassemble_image, disassemble_rom, load_annotations};
+use romdis::inventory::{self, Item};
+use romdis::{Listing, disassemble_image};
 
 fn main() {
     let mut roms = PathBuf::from("roms");
@@ -40,80 +41,75 @@ fn main() {
         }
     }
 
-    let mut failed = false;
-    for spec in ROMS {
-        let Ok(data) = fs::read(roms.join(spec.file)) else {
-            eprintln!("{}: not found, skipped", spec.file);
-            continue;
-        };
-        let result = load_annotations(&ann_dir, spec.family, Some(spec.annotations))
-            .map(|ann| disassemble_rom(&data, spec.origin, spec.title, spec.file, &ann));
-        failed |= !write(&out, spec.file, result);
-    }
+    let mut found = inventory::roms(&roms);
+    let programs = inventory::software(&software, &roms, &ann_dir);
+    found.items.extend(programs.items);
+    found.notes.extend(programs.notes);
+    found.indexes.extend(programs.indexes);
 
-    let mut programs: Vec<PathBuf> = fs::read_dir(&software)
-        .map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).collect())
-        .unwrap_or_default();
-    programs.retain(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("bin")));
-    programs.sort();
-    for path in programs {
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        let result = fs::read(&path)
-            .map_err(|e| e.to_string())
-            .and_then(|bytes| disassemble_program(&bytes, &name, &ann_dir));
-        failed |= !write(&out.join("software"), &name, result);
+    let mut failed = false;
+    for note in &found.notes {
+        eprintln!("romdis: {note}");
     }
+    for item in &found.items {
+        let result = item
+            .load_annotations(&ann_dir)
+            .map(|ann| listing(item, &ann));
+        failed |= !write(&out, item, result);
+    }
+    for (path, text) in &found.indexes {
+        let path = out.join(path);
+        if let Err(e) = path
+            .parent()
+            .map_or(Ok(()), fs::create_dir_all)
+            .and_then(|_| fs::write(&path, text))
+        {
+            eprintln!("romdis: {}: {e}", path.display());
+            failed = true;
+        }
+    }
+    println!("{} listings", found.items.len());
     if failed {
         process::exit(1);
     }
 }
 
-/// Disassemble a `.bin` program: annotations from `software/<stem>.ann`.
-fn disassemble_program(bytes: &[u8], name: &str, ann_dir: &Path) -> Result<Listing, String> {
-    let (address, data) = romdis::parse_bin(bytes)?;
-    let own = format!(
-        "software/{}.ann",
-        Path::new(name).file_stem().unwrap().to_string_lossy()
-    );
-    let family = fs::read_to_string(ann_dir.join(&own))
-        .ok()
-        .and_then(|src| Annotations::parse(&src).ok())
-        .and_then(|a| a.machine)
-        .unwrap_or(Family::Bk0010);
-    let ann = load_annotations(ann_dir, family, Some(&own))?;
-    let title = format!("{name}: program for the {family:?}");
-    Ok(disassemble_image(
-        data,
-        address,
-        &[romdis::start_address(address)],
-        &title,
-        name,
-        &ann,
-    ))
+fn listing(item: &Item, ann: &romdis::annotations::Annotations) -> Listing {
+    disassemble_image(
+        &item.data,
+        item.origin,
+        &item.starts,
+        &item.title,
+        &item.source,
+        ann,
+    )
 }
 
-fn write(dir: &Path, source: &str, result: Result<Listing, String>) -> bool {
+fn write(out: &Path, item: &Item, result: Result<Listing, String>) -> bool {
     let listing = match result {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("romdis: {source}: {e}");
+            eprintln!("romdis: {}: {e}", item.source);
             return false;
         }
     };
-    let path = dir.join(Path::new(source).with_extension("mac"));
-    if let Err(e) = fs::create_dir_all(dir).and_then(|_| fs::write(&path, &listing.text)) {
+    let path = out.join(&item.out);
+    if let Err(e) = path
+        .parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|_| fs::write(&path, &listing.text))
+    {
         eprintln!("romdis: {}: {e}", path.display());
         return false;
     }
     let s = listing.stats;
     println!(
-        "{:<18} code {:>5} (scan {:>4})  jump tables {:>4}  data {:>5} bytes  -> {}",
-        source,
+        "{:<44} code {:>5} (scan {:>4})  jump tables {:>4}  data {:>5} bytes",
+        item.out.display(),
         s.code,
         s.scanned,
         s.pointers,
         s.data,
-        path.display()
     );
     for w in &listing.warnings {
         println!("  warning: {w}");

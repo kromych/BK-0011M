@@ -380,8 +380,9 @@ start by themselves. The emulator's `--load` starts such files at 1000.
 
 ## Reading other people's code
 
-- `cargo run -p romdis` disassembles every ROM, and every program in
-  `software/`, into commented listings in `listings/`, with the system calls
+- `cargo run --release -p romdis` disassembles every ROM, and every program
+  under `software/` (on disk images and tapes too), into commented listings
+  in `listings/`, with the system calls
   named (from `annotations/`). `listings/monit10.mac` is the BK-0010 monitor,
   `listings/b11m_bos.mac` BOS. Each listing assembles back into the original
   bytes with this assembler.

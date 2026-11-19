@@ -483,9 +483,11 @@ printf 'm 60 2\nu 101136 4\n' | bk --bk0010 --frames 200 --debug
   [machine-code.md](machine-code.md#the-assembler).
 - `cargo run -p vm1 --example disasm -- FILE [ORIGIN] [COUNT]` disassembles
   a raw image (a ROM dump, say) loaded at ORIGIN (octal).
-- `cargo run -p romdis` writes commented disassembly listings of every ROM
-  and of the programs in `software/` into `listings/`. Comments come from
-  `annotations/`. Each listing assembles back into its exact image.
+- `cargo run --release -p romdis` writes commented disassembly listings of
+  every ROM and of every program under `software/` (`.bin` files, the
+  programs on disk images, the files on tape recordings) into `listings/`.
+  Comments come from `annotations/`, whose README says what is listed.
+  Each listing assembles back into its exact image.
 - `cargo test` runs the test suite: CPU, devices, the firmware booting, real
   games, tapes, disks, save states, the debugger, and seeded stress tests
   (`BK_STRESS=N` makes them bigger). Tests that need the ROMs or software

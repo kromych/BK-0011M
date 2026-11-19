@@ -75,6 +75,7 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 name = "bk"
 version = "0.1.0"
 dependencies = [
+ "symphonia",
  "vm1",
 ]
 
@@ -89,7 +90,6 @@ dependencies = [
  "minifb",
  "png",
  "rfd",
- "symphonia",
 ]
 
 [[package]]
@@ -1135,6 +1135,7 @@ dependencies = [
 name = "romdis"
 version = "0.1.0"
 dependencies = [
+ "bk",
  "vm1",
 ]
 
