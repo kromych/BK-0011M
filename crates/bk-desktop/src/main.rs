@@ -313,22 +313,31 @@ fn wav2bin(roms_dir: &Path, from: &Path, dir: &Path) -> Result<(), String> {
         };
         let copy = seen.entry(safe.clone()).or_insert(0);
         *copy += 1;
-        let path = match *copy {
-            1 => dir.join(format!("{safe}.bin")),
-            n => dir.join(format!("{safe}~{n}.bin")),
+        let copy = match *copy {
+            1 => String::new(),
+            n => format!("~{n}"),
         };
+        // A file the recording ends inside is written as far as it was read.
+        let part = if f.complete { "" } else { "-part" };
+        let path = dir.join(format!("{safe}{copy}{part}.bin"));
         std::fs::write(&path, f.file.to_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
+        let state = if !f.complete {
+            format!(
+                " — the recording ends inside it: {} of its {} bytes read",
+                f.file.data.len(),
+                f.length
+            )
+        } else if !f.checksum_ok {
+            " — CHECKSUM ERROR (damaged, or a file not meant to pass the ROM's check)".into()
+        } else {
+            String::new()
+        };
         eprintln!(
-            "{}: {:?}, {} bytes at {:06o}{}",
+            "{}: {:?}, {} bytes at {:06o}{state}",
             path.display(),
             f.name,
             f.file.data.len(),
             f.file.address,
-            if f.checksum_ok {
-                ""
-            } else {
-                " — CHECKSUM ERROR (the data is damaged)"
-            }
         );
     }
     Ok(())

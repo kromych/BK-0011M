@@ -477,20 +477,28 @@ fn tape_programs(
             name = format!("{base}~{n}");
         }
         used.push(name.clone());
-        let state = if f.checksum_ok {
-            ""
+        let state = if !f.complete {
+            format!(
+                ", the recording ends inside it: the first {} of {} bytes",
+                f.file.data.len(),
+                f.length
+            )
+        } else if f.checksum_ok {
+            String::new()
         } else {
-            ", checksum failed: as the ROM read it"
+            ", checksum failed: as the ROM read it".into()
         };
         index += &format!(
             "{:<20} {:06o} {:>6} bytes  {}\n",
             name,
             f.file.address,
             f.file.data.len(),
-            if f.checksum_ok {
-                "checksum OK"
+            if !f.complete {
+                format!("cut off ({} bytes in the header)", f.length)
+            } else if f.checksum_ok {
+                "checksum OK".into()
             } else {
-                "checksum failed"
+                "checksum failed".into()
             }
         );
         if f.file.data.is_empty() || usize::from(f.file.address) + f.file.data.len() > 0x10000 {

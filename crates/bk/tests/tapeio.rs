@@ -51,3 +51,39 @@ fn encoded_files_read_back_through_the_rom() {
         ("ИГРА.BIN", &b, true)
     );
 }
+
+/// A recording that ends inside a file: the files before it are kept, and
+/// the cut-off one comes last with the bytes the ROM had read.
+#[test]
+fn a_recording_cut_inside_a_file_keeps_what_was_read() {
+    let Some(roms) = roms() else { return };
+    let a = BinFile {
+        address: 0o1000,
+        data: (0..400u32).map(|i| (i * 5) as u8).collect(),
+    };
+    let b = BinFile {
+        address: 0o2000,
+        data: (0..2000u32).map(|i| (i * 3 + 1) as u8).collect(),
+    };
+    let first = encode_tape("FIRST", &a).unwrap().to_wav();
+    let second = encode_tape("SECOND", &b).unwrap().to_wav();
+    let mut samples = first.samples;
+    // Cut the second recording two thirds of the way through.
+    samples.extend(&second.samples[..second.samples.len() * 2 / 3]);
+    let wav = Wav {
+        rate: first.rate,
+        samples,
+    };
+    let files = read_tape_files(roms, TapeSignal::from_wav(&wav)).unwrap();
+    assert_eq!(files.len(), 2);
+    assert!(files[0].complete && files[0].checksum_ok);
+    assert_eq!(files[0].file, a);
+    let cut = &files[1];
+    assert_eq!(
+        (cut.name.as_str(), cut.complete, cut.length),
+        ("SECOND", false, 2000)
+    );
+    let n = cut.file.data.len();
+    assert!(n > 500 && n < 2000, "{n} bytes read");
+    assert_eq!(cut.file.data[..], b.data[..n], "the bytes read are right");
+}

@@ -333,7 +333,9 @@ would, and writes each to `DIR/NAME.bin` (the name without its spaces; a
 second copy of the same name, which tapes often carry, becomes
 `NAME~2.bin`). It reports each file's name, address and
 length, and whether the ROM accepted the checksum; a file that failed is
-still written, as the ROM read it. It needs the BK-0010 ROMs.
+still written, as the ROM read it. A file the recording ends inside is
+written as far as the ROM got, as `NAME-part.bin`. It needs the BK-0010
+ROMs.
 
 ### Disks
 

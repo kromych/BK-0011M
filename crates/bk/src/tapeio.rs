@@ -123,6 +123,11 @@ pub struct TapeFile {
     pub file: BinFile,
     /// The ROM accepted the checksum.
     pub checksum_ok: bool,
+    /// The length in the file's header.
+    pub length: u16,
+    /// The ROM read the whole file. False when the recording ends inside
+    /// it: `file.data` then holds the bytes the ROM had read.
+    pub complete: bool,
 }
 
 /// Where the reader program sits: the top of the BK-0010's RAM (the last
@@ -134,7 +139,8 @@ const LOAD_AT: u16 = 0o1000;
 /// Read every file on `tape` through the BK-0010 monitor's tape routine
 /// (EMT 36). `roms` must be a BK-0010 set. Each file is found by asking for
 /// a name no file has (the ROM then reports the name it found), and read
-/// again from its start under that name. Stops at the end of the tape.
+/// again from its start under that name. Stops at the end of the tape; a
+/// file the recording ends inside comes last, marked incomplete.
 pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, String> {
     if roms.model() != Model::Bk0010 {
         return Err("reading a tape needs the BK-0010 ROMs".into());
@@ -225,7 +231,26 @@ pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, St
         m.seek_tape(before);
         set_name(&mut m, &found_name);
         if !run(&mut m) {
-            return Err(format!("{text}: the tape ended inside the file"));
+            // The recording ends inside the file. The ROM was shifting bits
+            // into the byte at R1, so the bytes before it are whole (unless
+            // it was still in the header or the checksum).
+            let at = m.cpu().r[1];
+            let got = if (LOAD_AT..=LOAD_AT.saturating_add(len)).contains(&at) {
+                at - LOAD_AT
+            } else {
+                0
+            };
+            files.push(TapeFile {
+                name: text,
+                file: BinFile {
+                    address,
+                    data: bytes_at(&m, LOAD_AT, got),
+                },
+                checksum_ok: false,
+                length: len,
+                complete: false,
+            });
+            break;
         }
         let result = m.peek_word(blk).unwrap_or(0) >> 8;
         if result != 0 && result != 2 {
@@ -241,6 +266,8 @@ pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, St
                 data: bytes_at(&m, LOAD_AT, len),
             },
             checksum_ok: result == 0,
+            length: len,
+            complete: true,
         });
     }
     Ok(files)

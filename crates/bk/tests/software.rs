@@ -194,3 +194,45 @@ fn andos_boots_on_a_bk0010_with_the_floppy_controller() {
         "ANDOS title drawn: {before} → {after} screen words lit"
     );
 }
+
+/// Miami Cobra loads its parts with BK-0010-style EMT 36 calls, which only
+/// a disk system provides on the BK-0011M (under plain BOS, EMT 36 is the
+/// line editor). Its disk (made with tools/mkandos.py) boots ANDOS; started
+/// from ANDOS's file manager, the game reaches its menu (mostly cyan).
+#[test]
+fn miami_cobra_runs_from_its_andos_disk() {
+    let Ok(image) = std::fs::read(repo().join("software/miami-cobra/miami-cobra.dsk")) else {
+        eprintln!("skipping: software/miami-cobra/miami-cobra.dsk missing");
+        return;
+    };
+    let Ok(roms) = Roms::load_bk0011m(&repo().join("roms"), true) else {
+        return;
+    };
+    let mut m = Machine::new(
+        roms,
+        Config {
+            fdd: true,
+            ..Default::default()
+        },
+    );
+    m.insert_disk(0, bk::DiskImage::new(image, true)).unwrap();
+    let frames = |m: &mut Machine, n: usize| {
+        for _ in 0..n {
+            m.run_frame();
+        }
+    };
+    frames(&mut m, 900); // ANDOS title screen
+    m.type_text(" ");
+    frames(&mut m, 600); // file manager
+    m.type_text("\x1b"); // down to MIAMI
+    frames(&mut m, 50);
+    m.type_text("\n");
+    frames(&mut m, 1500);
+    let mut screen = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT];
+    m.render(&mut screen);
+    let cyan = screen.iter().filter(|&&p| p == 0x00FFFF).count();
+    assert!(
+        cyan * 2 > screen.len(),
+        "menu not on screen ({cyan} cyan pixels)"
+    );
+}
