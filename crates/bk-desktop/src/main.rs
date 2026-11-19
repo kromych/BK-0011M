@@ -710,13 +710,36 @@ fn run_headless(machine: &mut Machine, options: &Options) -> Result<(), String> 
     Ok(())
 }
 
-/// The screen with lines doubled, which is close to the BK's 4:3 TV picture.
-fn doubled_frame(machine: &Machine, frame: &mut [u32], out: &mut Vec<u32>) {
+/// The picture as shown: the BK's 512 x 256 dots at the 4:3 of a TV, each
+/// dot 2 pixels wide and each line 3 high (1024 x 768).
+const OUT_WIDTH: usize = 2 * SCREEN_WIDTH;
+const OUT_SCREEN_HEIGHT: usize = 3 * SCREEN_HEIGHT;
+/// The keyboard panel, drawn at its own size and doubled to match.
+const OUT_PANEL_HEIGHT: usize = 2 * panel::PANEL_HEIGHT;
+
+/// Render the screen into `out` at [`OUT_WIDTH`] x [`OUT_SCREEN_HEIGHT`].
+fn tv_frame(machine: &Machine, frame: &mut [u32], out: &mut Vec<u32>) {
     machine.render(frame);
     out.clear();
     for line in frame.as_chunks::<SCREEN_WIDTH>().0 {
-        out.extend_from_slice(line);
-        out.extend_from_slice(line);
+        let wide: Vec<u32> = line.iter().flat_map(|&p| [p, p]).collect();
+        for _ in 0..3 {
+            out.extend_from_slice(&wide);
+        }
+    }
+}
+
+/// Copy the panel drawn at its own size (`small`, [`SCREEN_WIDTH`] wide)
+/// into `out` doubled.
+fn double_panel(small: &[u32], out: &mut [u32]) {
+    for (y, line) in small.as_chunks::<SCREEN_WIDTH>().0.iter().enumerate() {
+        for dy in 0..2 {
+            let row = &mut out[(2 * y + dy) * OUT_WIDTH..(2 * y + dy + 1) * OUT_WIDTH];
+            for (x, &p) in line.iter().enumerate() {
+                row[2 * x] = p;
+                row[2 * x + 1] = p;
+            }
+        }
     }
 }
 
@@ -725,10 +748,11 @@ fn doubled_frame(machine: &Machine, frame: &mut [u32], out: &mut Vec<u32>) {
 fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Result<(), String> {
     let mut frame = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT];
     let mut pixels = Vec::new();
-    doubled_frame(machine, &mut frame, &mut pixels);
+    tv_frame(machine, &mut frame, &mut pixels);
     if let Some((model, fdd)) = panel {
         let screen = pixels.len();
-        pixels.resize(screen + SCREEN_WIDTH * panel::PANEL_HEIGHT, 0);
+        pixels.resize(screen + OUT_WIDTH * OUT_PANEL_HEIGHT, 0);
+        let mut small = vec![0; SCREEN_WIDTH * panel::PANEL_HEIGHT];
         let lights = panel::Lights {
             power: true,
             tape: machine.tape_motor_on(),
@@ -738,9 +762,10 @@ fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Resu
             debugger: false,
             model,
         };
-        panel::Panel::new(SCREEN_WIDTH).draw(&mut pixels[screen..], &lights, &|_| false, false);
+        panel::Panel::new(SCREEN_WIDTH).draw(&mut small, &lights, &|_| false, false);
+        double_panel(&small, &mut pixels[screen..]);
     }
-    let height = pixels.len() / SCREEN_WIDTH;
+    let height = pixels.len() / OUT_WIDTH;
     let rgb: Vec<u8> = pixels
         .iter()
         .flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8])
@@ -749,7 +774,7 @@ fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Resu
     let file = std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut encoder = png::Encoder::new(
         std::io::BufWriter::new(file),
-        SCREEN_WIDTH as u32,
+        OUT_WIDTH as u32,
         height as u32,
     );
     encoder.set_color(png::ColorType::Rgb);
@@ -1028,8 +1053,8 @@ fn run_window(
         symbols,
         outputs,
     } = setup;
-    let screen_height = 2 * SCREEN_HEIGHT;
-    let height = screen_height + panel::PANEL_HEIGHT;
+    let screen_height = OUT_SCREEN_HEIGHT;
+    let height = screen_height + OUT_PANEL_HEIGHT;
     let model = match machine.model() {
         Model::Bk0010 => "BK-0010",
         Model::Bk0011m => "BK-0011M",
@@ -1069,10 +1094,12 @@ fn run_window(
     // moves with something to play or record, unless the tape is to be
     // heard.
     let mut fast_forward = false;
+    // Opened at half the picture's size: on a 2x (Retina) display each
+    // pixel of it is a pixel of the screen.
     let mut window = Window::new(
         &shown_title,
-        SCREEN_WIDTH,
-        height,
+        OUT_WIDTH / 2,
+        height / 2,
         WindowOptions {
             resize: true,
             scale_mode: ScaleMode::AspectRatioStretch,
@@ -1101,6 +1128,7 @@ fn run_window(
 
     let mut frame = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT];
     let mut pixels = Vec::new();
+    let mut panel_pixels = vec![0; SCREEN_WIDTH * panel::PANEL_HEIGHT];
     // Host key → BK code sent when it went down, so the release matches.
     let mut down: HashMap<Key, u8> = HashMap::new();
     let mut console = console::Console::new();
@@ -1200,9 +1228,10 @@ fn run_window(
         }
 
         // The panel: clicks on its keys and the power light.
+        // In the panel's own (undoubled) pixels.
         let mouse = window.get_unscaled_mouse_pos(MouseMode::Pass).map(|m| {
-            let (x, y) = panel::to_buffer(m, window.get_size(), (SCREEN_WIDTH, height));
-            (x, y - screen_height as f32)
+            let (x, y) = panel::to_buffer(m, window.get_size(), (OUT_WIDTH, height));
+            (x / 2.0, (y - screen_height as f32) / 2.0)
         });
         for event in panel.mouse(mouse, window.get_mouse_down(MouseButton::Left)) {
             match event {
@@ -1267,12 +1296,12 @@ fn run_window(
             }
         }
         if powered {
-            doubled_frame(machine, &mut frame, &mut pixels);
+            tv_frame(machine, &mut frame, &mut pixels);
         } else {
             pixels.clear();
-            pixels.resize(SCREEN_WIDTH * screen_height, 0);
+            pixels.resize(OUT_WIDTH * screen_height, 0);
         }
-        pixels.resize(SCREEN_WIDTH * height, 0);
+        pixels.resize(OUT_WIDTH * height, 0);
         let lights = panel::Lights {
             power: powered,
             tape: powered && machine.tape_motor_on(),
@@ -1291,18 +1320,19 @@ fn run_window(
             .copied()
             .collect();
         panel.draw(
-            &mut pixels[SCREEN_WIDTH * screen_height..],
+            &mut panel_pixels,
             &lights,
             &|code| held.contains(&code),
             ar2,
         );
+        double_panel(&panel_pixels, &mut pixels[OUT_WIDTH * screen_height..]);
         let wanted = title(machine.monitor(), typist.pending(), fast, machine);
         if wanted != shown_title {
             window.set_title(&wanted);
             shown_title = wanted;
         }
         window
-            .update_with_buffer(&pixels, SCREEN_WIDTH, height)
+            .update_with_buffer(&pixels, OUT_WIDTH, height)
             .map_err(|e| e.to_string())?;
     }
     Ok(())

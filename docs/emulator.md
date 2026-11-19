@@ -474,7 +474,7 @@ other guides' examples were checked.
 | `--frames N` | run N frames (1/50 s each; default 100) first |
 | `--type TEXT` | then type TEXT: `\n` is ВВОД, `\NNN` any key code in octal up to 377 (`\017` ЛАТ, `\016` РУС, `\003` КТ, `\201` ПОВТ, `\211` ТАБ; codes 200 and up go through the function-key vector 274 with their low 7 bits, as АР2 combinations do, so `\261` is АР2+1), `\p` a one-second pause; Russian letters are typed in РУС mode, switching back to ЛАТ after them |
 | `--wait N` | frames to run after typing (default 50) |
-| `--screenshot FILE` | save the screen as a PNG at the end (`--panel`: with the on-screen keyboard under it, as in the window) |
+| `--screenshot FILE` | save the screen as a PNG at the end, 1024 × 768: the BK's 512 × 256 dots at the 4:3 of a TV, as the window shows them (`--panel`: with the on-screen keyboard under it, as in the window) |
 | `--wav FILE` | save the sound as a WAV file |
 | `--save-state FILE` | save the machine state at the end |
 | `--debug` | after the rest, run debugger commands from standard input |
