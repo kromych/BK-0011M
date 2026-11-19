@@ -41,8 +41,9 @@ the next one with Alt+O when the game asks for it.
   stays in play: the next recording, opened with Alt+O when the game asks
   for it, plays at once.
 - **`--invert-tape`** (Alt+I): the ROM measures which way up a recording is
-  and reads either; Indiana Jones' level 1 and 2 loaders assume one, and
-  from these recordings need the signal inverted.
+  and reads either; some loaders (Ferrari, Robocop, Indiana Jones' levels)
+  assume one. `bk` takes these recordings the way up those loaders need;
+  the switch turns other recordings over.
 
 | Game | Author, year | Recordings | Name for `M` | In `bk` |
 |---|---|---|---|---|
@@ -54,10 +55,10 @@ the next one with Alt+O when the game asks for it.
 | Expert | DIM corp., 1992 | `Expert` | `EXPERT` | the title, then stops; with `--no-motor-control` the rest loads, and a key gives the menu |
 | Ferrari | Bubon production, 1992 | `Ferrari` | `FERRARI` | the title |
 | Hobbit | ELM Soft, 1992 | `Hobbit` | `HOBBIT` | stops at "PROTECTION BY TOKEN CORP."; with `--no-motor-control` the menu |
-| Indiana Jones | Smash corp., 1991 | `Indiana-Jones` (intro), `Indiana-Jones-1` … `-3` (levels) | `INDIANA JONES` | the title and story; levels 1 and 2 need `--invert-tape` |
+| Indiana Jones | Smash corp., 1991 | `Indiana-Jones` (intro), `Indiana-Jones-1` … `-3` (levels) | `INDIANA JONES` | the title and story; the levels (`M JONES1` and so on) their menus |
 | New Revolution | Smash corp., 1992 | `New-Revolution` | `NEW REVOLUTION` | the title (a test checks it) |
 | Перевал | BIL corp., 1991 | `Pereval-1` (loader), `-2` (intro), `-3` (game), `-4` (check) | `ПЕРЕВАЛ` | the loader waits for the next recording; the later ones don't load (below) |
-| Planet | BIL corp., 1991 | `Planet` | `PLANET` | "3 GAME PLANET"; with `--no-motor-control` the picture, then a crash (below) |
+| Planet | BIL corp., 1991 | `Planet` | `PLANET` | "3 GAME PLANET", then stops; with `--no-motor-control` the picture, then the menu |
 | Return of the Jedi | SSV, 1991 | `Return-Jedi-1` (loader), `-2` (game) | `RETURNJ` | the title; a key, then `Return-Jedi-2`, gives the menu |
 | Robocop | Smash corp., 1992 | `Robocop` | `ROBOCOP` | the information screen, then the title |
 | Runing | BIL corp., 1991 | `Runing` | `RUNING` | as Planet |
@@ -68,8 +69,9 @@ the next one with Alt+O when the game asks for it.
 
 The chip-level CPU model of `tools/vm1-timing`, given the same recordings
 and memory timing, does the same as `bk` with Ferrari, Expert, Hobbit and
-Soldier (the others weren't run on it); Ferrari loads only with the ROM
-replying to the CPU as the emulator's does. Each recording's files as the
+Soldier (the others weren't run on it), with the ROM timing and tape
+polarity `bk` used then; `bk` has since changed both, for the BIL games
+(below), and all of these still load. Each recording's files as the
 ROM sees them: `bk --wav2bin FILE DIR`, or the listings `cargo run
 --release -p romdis` writes to `listings/software/tapes/protected/`.
 
@@ -142,7 +144,9 @@ bit (the trace trap again). It ignores the addresses in their headers
 word count taken from the timer, read after timing the ROM's checksum
 routine over 2304 bytes, and a start address from a checksum of the
 loader: change the loader, or the machine's speed, and the game decrypts
-to garbage. Planet's PIC also has a sync 4 times the threshold, which the
+to garbage. This is how `bk`'s ROM timing was settled: the count lands in
+the right band (Planet's 010300–010377) only with ROM replying in 1 clock;
+at 2 it lands one band low, 64 words stay encrypted and the game crashes. Planet's PIC also has a sync 4 times the threshold, which the
 loader allows and the ROM (2 times) rejects.
 
 Copied with the monitor (`M BALLY.GMC`), the parts load but are encrypted
@@ -205,9 +209,10 @@ The stub and the 1:2:4 period ratio are the ROM's; the recordings run at
   copy of 117260 that forces the polarity (cell 300) to 0, check the
   result with the ROM's checksum routine, and finally reach the next stage
   by a `HALT` through vector 4. Then they read the level's overlay
-  (`jones1.ovl`, an ordinary file at double speed). With the other
-  polarity every 1 bit times right at the threshold and reads as 0: hence
-  `--invert-tape`. JONES3 has no raw blocks and loads either way.
+  (`jones1.ovl`, an ordinary file at double speed). The forced polarity
+  leaves the 1 bits close to the threshold: whether they read as 1
+  depends on the recording's polarity and the CPU's speed. JONES3 has no
+  raw blocks and loads either way.
 - **Robocop** checks its own bytes and the name found on the tape
   (`EMT 150` on a mismatch), clears memory up to the ROM so that the bus
   error shows the information screen, and builds its block loader over the
@@ -303,13 +308,5 @@ loading it. After the title, the game reads `RETURNJ.2` with the ROM.
 
 ## What `bk` doesn't do yet
 
-- **Planet, Runing, Second, Superman** crash after their picture, even
-  with `--no-motor-control`: the game's decryption key comes from the
-  CPU's timer after timing the ROM's checksum routine, and `bk`'s count is
-  about 2 % off what the game expects (Second's about 5 %). With the count
-  corrected all four reach their menus. Which part of the emulated
-  timing differs from the machines these tapes were made on isn't known.
-- **Перевал** (above): a 1 bit as long as the pilot.
-- **Polarity**: Indiana Jones' levels 1 and 2 need `--invert-tape`; the
-  other tapes load either way. Whether the BK's input or the recordings
-  are the other way up isn't known.
+- **Перевал** (above): a 1 bit as long as the pilot, so its later
+  recordings don't load.

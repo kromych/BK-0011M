@@ -140,8 +140,16 @@ impl Printer {
 const RAM_WAIT_BK0010: [u32; 4] = [4, 3, 6, 5];
 const RAM_WAIT_BK0011M: [u32; 16] = [5, 4, 3, 7, 6, 5, 4, 3, 8, 7, 6, 5, 4, 3, 7, 6];
 
-/// Default reply delays of ROM and external I/O: see [`Board::rom_wait`].
-pub const ROM_WAIT: u32 = 2;
+/// How many clocks ROM takes to reply. Four BIL corp. games (Planet,
+/// Runing, Second, Superman) take the key that decrypts them from the CPU's
+/// timer while the monitor ROM's checksum loop runs over 2304 bytes: the
+/// count lands in the band they need only if that loop, almost all
+/// instruction fetches from ROM, runs 1.5-6% faster than with a 2-clock
+/// reply, and a 1-clock reply puts it there. The ROM's own tape pulses
+/// then come out at 155 µs, against 166 µs on real cassettes (whose decks'
+/// speed varies by a few percent).
+pub const ROM_WAIT: u32 = 1;
+/// How many clocks external I/O registers take to reply.
 pub const IO_WAIT: u32 = 2;
 
 impl Board {
@@ -322,12 +330,15 @@ impl Board {
 
     /// The tape signal under the head, as last set.
     pub fn tape_input(&self) -> bool {
-        self.sel1 & sel1::TAPE_IN == 0
+        self.sel1 & sel1::TAPE_IN != 0
     }
 
-    /// The tape signal under the head.
+    /// The tape signal under the head: bit 5 of 177716 is 1 while a
+    /// recording's signal is high. The ROM reads either polarity; the
+    /// protected tapes' loaders that assume one (Indiana Jones' levels,
+    /// Robocop, Ferrari) load from their recordings this way up.
     pub fn set_tape_input(&mut self, high: bool) {
-        let bit = if high { 0 } else { sel1::TAPE_IN };
+        let bit = if high { sel1::TAPE_IN } else { 0 };
         if self.sel1 & sel1::TAPE_IN != bit {
             self.sel1 = (self.sel1 & !sel1::TAPE_IN) | bit | sel1::CHANGED;
         }

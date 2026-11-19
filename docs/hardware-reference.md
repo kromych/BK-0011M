@@ -113,11 +113,16 @@ The replies:
   16 on the BK-0011M, so the BK-0011M is only about 15% faster in real
   time, as the bin2wav-cli note that the BK-0011 reads tapes "about 17%
   faster" says.
-- **ROM and I/O registers** reply in 2 clocks (MiST answers at once; the
-  ROMs are separate chips on the bus). At 0 or 3 clocks the chip model
-  fails to load Ferrari, a protected tape whose loader works at the
-  tape's limit; at 2 it loads, and the monitor's tape loop writes 164 µs
-  pilot half-periods, against 166 µs on real cassettes (§5).
+- **ROM** replies in 1 clock, and **I/O registers** in 2 (MiST answers
+  at once; the ROMs are separate chips on the bus). Not measured: four
+  BIL corp. games (Planet, Runing, Second, Superman) take the key that
+  decrypts them from the CPU's timer while the monitor's checksum loop,
+  almost all instruction fetches from ROM, runs over 2304 bytes, and they
+  get the right key only if that loop runs 1.5–6% faster than with a
+  2-clock reply; at 1 clock all four run. The monitor's tape loop then
+  writes 155 µs pilot half-periods, against 166 µs measured on real
+  cassettes (§5), which depends on the speed of the decks that recorded
+  and played them.
 - **SEL1, SEL2 and the CPU's timer** (177700–177717) answer inside the
   CPU.
 - On the BK-0011M writes are held 2 clocks longer before the strobe.
@@ -257,8 +262,10 @@ Unknown I/O address → bus timeout (vector 4).
   They also drive the speaker, as a 3-bit DAC weighted 4:2:1 in the MiST
   core; the emulator mixes them the same way. It records bit 6 as the tape
   signal.
-- Tape input appears on bit 5 of 177716 read, inverted (signal high → bit
-  0); a change also sets SEL1 bit 2.
+- Tape input appears on bit 5 of 177716 read: 1 while the recording's
+  signal is high. The ROM reads either polarity; protected loaders that
+  assume one (Ferrari, Robocop, Indiana Jones' levels) load from their
+  recordings this way up. A change also sets SEL1 bit 2.
 - The tape format (FSK) is encoded and decoded by the ROMs. The emulator
   plays a recorded signal into bit 5 while the motor runs, and can record
   what the BK writes. Saving a BASIC program with `CSAVE` and loading the
@@ -266,8 +273,8 @@ Unknown I/O address → bus timeout (vector 4).
 - Real recordings agree with the emulated timing. Of ten cassette
   recordings sampled from archive.pdp-11.org.ru (TAPES/another_tapes),
   three BK-0010.01 game collections are in the standard format, with pilot
-  half-periods of 166 µs against the emulator's 164 µs (within cassette
-  speed variation); five use turbo loaders (about 95 µs). Through
+  half-periods of 166 µs against the emulator's 155 µs (cassette decks'
+  speed varies by several percent); five use turbo loaders (about 95 µs). Through
   the ROM the emulator decodes their headers exactly, and the same file
   from two recordings decodes identically until the recordings' dropouts,
   where the ROM rejects the checksum. No complete file has loaded from

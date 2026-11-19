@@ -19,18 +19,18 @@ const CPU_HZ: u32 = 3_000_000;
 // Half-periods in CPU clocks, as the monitor ROM's tape loops
 // (116404–116620) write them on the emulated BK-0010. Each pulse is a high
 // half, then a low half. (The ROM's low halves of 0s and tails alternate
-// between 505 and 515 clocks, and run longer at byte boundaries; the reader
+// between 477 and 486 clocks, and run longer at byte boundaries; the reader
 // doesn't mind.)
 /// Pilot pulse.
-const PILOT: (u32, u32) = (491, 491);
+const PILOT: (u32, u32) = (464, 464);
 /// The long synchronization pulse after a pilot.
-const SYNC: (u32, u32) = (2049, 2021);
+const SYNC: (u32, u32) = (1940, 1911);
 /// A data pulse for a 1 bit (twice a 0's).
-const ONE: (u32, u32) = (1023, 1023);
+const ONE: (u32, u32) = (968, 968);
 /// A data pulse for a 0 bit.
-const ZERO: (u32, u32) = (510, 510);
+const ZERO: (u32, u32) = (482, 482);
 /// The pulse that follows every bit's data pulse.
-const TAIL: (u32, u32) = (510, 510);
+const TAIL: (u32, u32) = (482, 482);
 
 /// Pilot pulses before the header, before the data, and after the file.
 const LEADER_PULSES: u32 = 4096;

@@ -546,5 +546,5 @@ parallel port the AY-3-8910, Covox, a joystick and a printer.
 Not emulated: the ИРПС serial registers of the school model (BK-0010Ш),
 the mouse on the parallel port, and the analog imperfections of a TV. The
 CPU's timing reproduces the chip-level model's bus cycles exactly; how fast
-the real ROMs reply (2 clocks here) is inferred from protected tapes, not
+the real ROMs reply (1 clock here) is inferred from protected games, not
 measured.

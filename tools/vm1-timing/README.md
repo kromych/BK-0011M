@@ -213,10 +213,15 @@ answers at once, the real BK's ROMs don't. Results:
   as 0 and never takes the bus error; with 3 clocks it fails too; with 2
   clocks it loads completely, to the game's title.
 - With 2 clocks Expert loads, Hobbit stops at its "PROTECTION BY TOKEN
-  CORP." screen, and Soldier's loader never finishes. The emulator, whose
-  ROM and I/O reply in 2 clocks, does exactly the same on all four. With
-  that timing the BK-0010 monitor writes 164 µs pilot half-periods, and
-  real BK-0010.01 cassettes have 166 µs (docs/hardware-reference.md §5).
+  CORP." screen (its loader has stopped the motor), and Soldier waits for
+  a key on an empty screen; the emulator did exactly the same with the
+  same timing.
+- These runs feed the tape in with the polarity the emulator then used
+  (bit 5 of 177716 is 0 while the signal is high). The emulator has since
+  turned it the other way up and made its ROM reply in 1 clock: four BIL
+  corp. games take a decryption key from the CPU's timer that is right
+  only with ROM that fast, and with both changes every protected tape
+  loads, Ferrari included (docs/hardware-reference.md §1).
 - An MP3 that the emulator's encoder made before its pulses were all whole
   samples (pilot halves alternating 7 and 8 samples) doesn't load on the
   chip model, nor in the emulator; re-encoded, it loads in both.

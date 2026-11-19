@@ -676,20 +676,50 @@ fn load_protected(
 }
 
 /// Indiana Jones' level 1 loader reads its blocks with a fixed polarity
-/// instead of the one the ROM measures: from Manwe's recording it needs the
-/// signal inverted, and then reaches the game (its menu runs in RAM);
-/// otherwise it crashes back into BASIC's ROM.
+/// instead of the one the ROM measures, at its margin: from Manwe's
+/// recording it reaches the game (its menu runs in RAM) rather than
+/// crashing back into BASIC's ROM.
 #[test]
-fn indiana_jones_level_1_needs_the_tape_inverted() {
+fn indiana_jones_level_1_loads_from_its_recording() {
+    let Some(m) = load_protected("Indiana-Jones-1.wav.gz", "JONES1", 9500, |_| {}) else {
+        return;
+    };
+    let pc = m.cpu().pc();
+    assert!(pc < 0o100000, "PC {pc:06o}");
+}
+
+/// Ferrari's first stage reads 1 bits right at the ROM's threshold: it
+/// loads (its loader runs in RAM) with the tape signal this way up, and
+/// falls back to the monitor with it inverted.
+#[test]
+fn ferrari_loads_with_the_tape_signal_this_way_up() {
     for invert in [false, true] {
-        let Some(m) = load_protected("Indiana-Jones-1.wav.gz", "JONES1", 9500, |m| {
+        let Some(m) = load_protected("Ferrari.wav.gz", "FERRARI", 8800, |m| {
             m.set_tape_invert(invert)
         }) else {
             return;
         };
         let pc = m.cpu().pc();
-        assert_eq!(pc < 0o100000, invert, "inverted {invert}: PC {pc:06o}");
+        assert_eq!(pc < 0o100000, !invert, "inverted {invert}: PC {pc:06o}");
     }
+}
+
+/// BIL corp.'s games take their decryption key from the CPU's timer while
+/// the monitor ROM's checksum routine runs over 2304 bytes: Planet's count,
+/// read at 005330, must fall in the band 010300-010377 (one band lower
+/// decrypts 64 words too few, and the game crashes). It needs a recorder
+/// without motor control (its bell stops the motor mid-load).
+#[test]
+fn planet_takes_the_right_key_from_the_timer() {
+    let Some(m) = load_protected("Planet.wav.gz", "PLANET", 10_500, |m| {
+        m.set_motor_control(false);
+        m.set_breakpoints(&[0o5334]);
+    }) else {
+        return;
+    };
+    assert_eq!(m.cpu().pc(), 0o5334, "the stub after the timer read");
+    let count = m.cpu().r[1];
+    assert_eq!(count & !0o77, 0o10300, "count {count:06o}");
 }
 
 /// A recorder without motor control: once the BK has run the motor, the
