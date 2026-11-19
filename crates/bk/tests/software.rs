@@ -24,6 +24,9 @@ const PROGRAMS: &[(&str, Model, usize, &str)] = &[
     ("krakout.bin", Model::Bk0011m, 250, " "),
     // The intro takes about 11 seconds to start.
     ("BoingBall.bin", Model::Bk0011m, 700, ""),
+    // From BKEmu's package: Boulder Dash's title, a music collection's menu.
+    ("bkemu/BOLDER.BIN", Model::Bk0010, 250, ""),
+    ("bkemu/MELMAN.BIN", Model::Bk0010, 250, ""),
 ];
 
 #[test]
@@ -235,4 +238,71 @@ fn miami_cobra_runs_from_its_andos_disk() {
         cyan * 2 > screen.len(),
         "menu not on screen ({cyan} cyan pixels)"
     );
+}
+
+/// Run for up to `frames`, or until the program has printed `until`,
+/// collecting what it prints through the monitor: EMT 16 (a character in
+/// R0) and EMT 20 (a string at R1; R2's low byte its length, or 0 to print
+/// up to the character in R2's high byte).
+fn printed_text(m: &mut Machine, frames: usize, until: &str) -> String {
+    m.set_opcode_breaks(&[0o104016, 0o104020]);
+    let mut text = String::new();
+    let mut ran = 0;
+    while ran < frames && !text.contains(until) {
+        let Some(bk::Break::Opcode(pc)) = m.run_frame() else {
+            ran += 1;
+            continue;
+        };
+        let r = m.cpu().r;
+        let byte = |m: &Machine, a: u16| {
+            m.peek_word(a & !1)
+                .map_or(0, |w| (w >> (8 * (a & 1))) as u8)
+        };
+        if m.peek_word(pc) == Some(0o104016) {
+            text.push(char::from(r[0] as u8 & 0o177));
+        } else {
+            let (len, end) = (r[2] & 0o377, (r[2] >> 8) as u8);
+            for i in 0..256u16 {
+                let c = byte(m, r[1].wrapping_add(i));
+                if (len == 0 && c == end) || (len != 0 && i == len) {
+                    break;
+                }
+                text.push(char::from(c & 0o177));
+            }
+        }
+        m.step_into();
+    }
+    m.set_opcode_breaks(&[]);
+    text
+}
+
+/// BKEmu's "K1801BM1 compatibility test v0.4" (Digital Freedom, 2012) runs
+/// eight checks and prints a verdict for each through the monitor. On the
+/// BK-0010 the seven processor checks pass (SWAB, JMP (Rn)+, opcodes
+/// 210-217, JSR/JMP to a register, PC operands, Rn,(Rn)+, the VM1's timer);
+/// the eighth, the CPU's speed, needs a BK-0011M and says so.
+#[test]
+fn k1801vm1_compatibility_test_passes_on_the_bk0010() {
+    let Ok(bytes) = std::fs::read(repo().join("software/bkemu/CPUTEST.BIN")) else {
+        eprintln!("skipping: software/bkemu/CPUTEST.BIN missing");
+        return;
+    };
+    let Ok(roms) = Roms::load_bk0010(&repo().join("roms"), Bk0010Rom::Basic) else {
+        return;
+    };
+    let mut m = Machine::new(roms, Config::default());
+    for _ in 0..150 {
+        m.run_frame();
+    }
+    let bin = BinFile::parse(&bytes).unwrap();
+    m.load_bin(&bin).unwrap();
+    m.start_at(bin.start_address());
+    let text = printed_text(&mut m, 10_000, "restart");
+    let verdicts: Vec<&str> = text.split("check #").skip(1).collect();
+    assert_eq!(verdicts.len(), 8, "{text:?}");
+    for (n, v) in verdicts.iter().enumerate().take(7) {
+        assert!(v.ends_with("pass"), "check {}: {v:?}", n + 1);
+    }
+    assert!(verdicts[7].starts_with("08 - CPU speed") && verdicts[7].contains("FAIL"));
+    assert!(text.contains("We need 11M hardware"), "{text:?}");
 }
