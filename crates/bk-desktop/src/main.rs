@@ -100,7 +100,8 @@ Emulator commands (Cmd also works on a Mac): Alt+O opens a file (a .bin
 program is loaded and started, a .wav or .mp3 goes in the tape recorder,
 a disk image in drive 0, a .state is restored), Alt+S saves the state,
 Alt+L loads it, Alt+D stops in the debugger, Alt+V types the text on the
-clipboard into the BK, Alt+F switches fast-forward on and off, Alt+M
+clipboard into the BK, Alt+F fast-forwards the tape being read until it
+stops (or not, pressed again), Alt+M
 switches between the color and mono monitors (programs using 512-dot mode
 look right only in mono), Alt+T switches the tape sound on and off, Alt+R
 switches the recorder's motor control (see --no-motor-control), Alt+I
@@ -1148,9 +1149,9 @@ fn run_window(
         }
     };
     let mut shown_title = title(machine.monitor(), 0, false, machine, false);
-    // Fast-forward: switched by Alt+F, and on by itself while the tape
-    // moves with something to play or record, unless the tape is to be
-    // heard.
+    // Fast-forward: on by itself while the tape moves with something to
+    // play or record, unless the tape is to be heard; Alt+F fast-forwards
+    // a tape that is heard, until it stops.
     let mut fast_forward = false;
     // Opened at half the picture's size: on a 2x (Retina) display each
     // pixel of it is a pixel of the screen.
@@ -1229,7 +1230,13 @@ fn run_window(
                     }
                     Key::V => paste(&mut typist),
                     Key::F => {
-                        fast_forward = !fast_forward;
+                        // Only the tape being read: it isn't kept on
+                        // past the load.
+                        if machine.tape_busy() {
+                            fast_forward = !fast_forward;
+                        } else {
+                            eprintln!("bk: no tape is moving: nothing to fast-forward");
+                        }
                         Ok(())
                     }
                     Key::T => {
@@ -1319,6 +1326,10 @@ fn run_window(
         if console.stopped {
             console.poll(machine);
         }
+        // Alt+F's fast-forward ends with the tape it was for.
+        if fast_forward && !machine.tape_busy() {
+            fast_forward = false;
+        }
         let tape_fast = machine.tape_busy() && !machine.tape_sound();
         let fast = powered && (fast_forward || tape_fast);
         if fast != was_fast {
@@ -1327,7 +1338,7 @@ fn run_window(
                 "bk: fast-forward {}",
                 match (fast, fast_forward) {
                     (false, _) => "off",
-                    (true, true) => "on (Alt+F)",
+                    (true, true) => "on until the tape stops (Alt+F)",
                     (true, false) =>
                         "on while the tape moves (Alt+T to hear it at its speed instead)",
                 }
