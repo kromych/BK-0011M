@@ -590,3 +590,30 @@ fn tape_stops_being_busy_at_its_end() {
     assert!(m.tape_ended());
     assert!(!m.tape_busy(), "nothing left to play");
 }
+
+/// A copy-protected game from Manwe's reconstructed tapes, loaded the way
+/// its page says (the monitor's M and its name) from the gzipped WAV: its
+/// loader takes over from the ROM and the title comes up in red.
+#[test]
+fn a_protected_tape_loads_through_its_own_loader() {
+    let tape = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../software/tapes/protected/New-Revolution.wav.gz");
+    let Ok(bytes) = std::fs::read(&tape) else {
+        eprintln!("skipping: {} missing", tape.display());
+        return;
+    };
+    let Some(mut m) = machine_of(Model::Bk0010) else {
+        return;
+    };
+    frames(&mut m, 150);
+    let wav = bk::parse_recording(bytes).unwrap();
+    m.insert_tape(Some(bk::TapeSignal::from_wav(&wav)));
+    m.type_text("MONIT\n");
+    frames(&mut m, 50);
+    m.type_text("M\nNEW REVOLUTION\n");
+    frames(&mut m, 3500);
+    let mut screen = vec![0; bk::SCREEN_WIDTH * bk::SCREEN_HEIGHT];
+    m.render(&mut screen);
+    let red = screen.iter().filter(|&&p| p == 0xFF0000).count();
+    assert!(red > 5000, "title not on screen ({red} red pixels)");
+}

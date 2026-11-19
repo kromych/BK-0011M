@@ -178,6 +178,7 @@ pub fn software(dir: &Path, roms_dir: &Path, ann_dir: &Path) -> Inventory {
             "bin" => bin_program(&path, &rel, ann_dir, &mut inv),
             "dsk" | "img" | "bkd" => disk_programs(&path, &rel, ann_dir, &mut inv),
             "wav" | "mp3" => tape_programs(&path, &rel, roms_dir, ann_dir, &mut inv),
+            "gz" if is_recording(&rel) => tape_programs(&path, &rel, roms_dir, ann_dir, &mut inv),
             _ => Ok(()),
         };
         if let Err(e) = result {
@@ -308,9 +309,24 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// `rel` without its extension, `/`-separated.
+/// `rel` without its extension (both of `.wav.gz`), `/`-separated.
 fn stem(rel: &Path) -> String {
-    rel.with_extension("").to_string_lossy().replace('\\', "/")
+    let mut path = rel.with_extension("");
+    if rel
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("gz"))
+        && is_recording(&path)
+    {
+        path = path.with_extension("");
+    }
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// A recording's name, gzipped or not (`x.wav`, `x.mp3`, `x.wav.gz`).
+fn is_recording(rel: &Path) -> bool {
+    let name = rel.to_string_lossy().to_lowercase();
+    let name = name.strip_suffix(".gz").unwrap_or(&name);
+    name.ends_with(".wav") || name.ends_with(".mp3")
 }
 
 /// A name made safe for a file name on any system.

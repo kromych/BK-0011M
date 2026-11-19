@@ -36,8 +36,8 @@ usage: bk [options]
                      address, or 1000 if that's lower)
   --files DIR        fast tape: when a program loads or saves a named file,
                      use .bin files in DIR (default: the directory of --load)
-  --tape FILE        put a recorded tape (.wav or .mp3) in the recorder; it
-                     plays while the BK runs the tape motor
+  --tape FILE        put a recorded tape (.wav or .mp3, or either gzipped) in
+                     the recorder; it plays while the BK runs the tape motor
   --record FILE.wav  record what the BK writes to tape, saved on exit
   --ay               an AY-3-8910 sound chip on the parallel port
   --covox            a Covox (8-bit DAC) on the parallel port
@@ -772,7 +772,7 @@ fn open_file(machine: &mut Machine, disks: &mut Vec<PathBuf>) -> Result<(), Stri
     let Some(path) = rfd::FileDialog::new()
         .add_filter(
             "BK files",
-            &["bin", "wav", "mp3", "dsk", "img", "bkd", "state"],
+            &["bin", "wav", "mp3", "gz", "dsk", "img", "bkd", "state"],
         )
         .add_filter("All files", &["*"])
         .pick_file()
@@ -814,7 +814,7 @@ fn open_path(machine: &mut Machine, path: &Path, disks: &mut Vec<PathBuf>) -> Re
                 bin.address
             );
         }
-        "wav" | "mp3" => {
+        "wav" | "mp3" | "gz" => {
             let wav = read_recording(path)?;
             machine.insert_tape(Some(TapeSignal::from_wav(&wav)));
             eprintln!("tape {shown} in the recorder");

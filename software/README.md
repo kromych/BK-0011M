@@ -54,7 +54,8 @@ then `MONIT` in BASIC, and at the monitor's `?` type `M`, then `R&O-REKL1`
 and ВВОД. The tape plays (the emulator runs fast meanwhile) and the set's
 loader starts itself, but the recording ends before the program it loads,
 so nothing more happens. More recordings, some of which load whole:
-[tapes/README.md](tapes/README.md).
+[tapes/README.md](tapes/README.md); copy-protected games:
+[tapes/protected/README.md](tapes/protected/README.md).
 
 ## Listings
 

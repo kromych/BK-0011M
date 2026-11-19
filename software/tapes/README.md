@@ -1,5 +1,8 @@
 # Tape recordings
 
+`protected/` holds clean recordings of 19 copy-protected games, with their
+own README.
+
 Real cassette recordings of a series of BK-0010.01 game tapes ("sets"),
 kept for work on damaged tapes (issue #8). The `survey-*.mp3` files are the
 first 1.2 MB (50 seconds) of each original MP3; `t3-005.mp3` is whole. Each

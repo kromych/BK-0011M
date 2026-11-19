@@ -281,7 +281,7 @@ bk --bk0010 --load software/DIGTIT_1.6.BIN     # loads DIGGER_1.6.BIN itself
 Saving works the same way: a program that writes a file named `GAME` creates
 `DIR/GAME.bin`.
 
-### Real tapes (`.wav`, `.mp3`)
+### Real tapes (`.wav`, `.mp3`, gzipped too)
 
 ```sh
 bk --bk0010 --tape recording.wav

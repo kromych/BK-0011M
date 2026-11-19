@@ -1,12 +1,22 @@
 //! Reading tape recordings: PCM WAV files and MP3s (many archived BK tapes
-//! are MP3s; at 128 kbit/s and up the pulse edges come through unmoved).
+//! are MP3s; at 128 kbit/s and up the pulse edges come through unmoved),
+//! either of them gzipped (a reconstructed square-wave WAV packs to a
+//! hundredth of its size).
 
 use crate::audio::Wav;
 
-/// A tape recording from a file's bytes: a PCM WAV file or an MP3. The
-/// channels of a stereo recording are lined up and combined
-/// ([`Wav::from_channels`]).
+/// A tape recording from a file's bytes: a PCM WAV file or an MP3, either
+/// of them gzipped. The channels of a stereo recording are lined up and
+/// combined ([`Wav::from_channels`]).
 pub fn parse_recording(bytes: Vec<u8>) -> Result<Wav, String> {
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        use std::io::Read;
+        let mut unpacked = Vec::new();
+        flate2::read::GzDecoder::new(&bytes[..])
+            .read_to_end(&mut unpacked)
+            .map_err(|e| format!("gzip: {e}"))?;
+        return parse_recording(unpacked);
+    }
     if bytes.starts_with(b"RIFF") {
         return Wav::parse(&bytes);
     }
