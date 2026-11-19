@@ -128,8 +128,8 @@ relay the tape stops; these tapes were made for one that isn't
 ### BIL corp.: Bally, Planet, Runing, Second, Superman
 
 One loader, 2384 bytes at 000400, differing per game only in names, colors
-and encryption constants. It checks that the monitor loaded it at its own address (cell
-264), stops the CPU's timer and starts its real code through the trace
+and encryption constants (all five have the same byte sum, 065102). It
+checks that the monitor loaded it at its own address (cell 264), stops the CPU's timer and starts its real code through the trace
 trap and a reserved instruction (177643, vector 10), decrypting 31 words
 and then the loader proper into screen memory, hidden by the scroll
 register. It shows "N GAME name" and rings the bell, which stops the motor.
@@ -146,12 +146,29 @@ routine over 2304 bytes, and a start address from a checksum of the
 loader: change the loader, or the machine's speed, and the game decrypts
 to garbage. This is how `bk`'s ROM timing was settled: the count lands in
 the right band (Planet's 010300–010377) only with ROM replying in 1 clock;
-at 2 it lands one band low, 64 words stay encrypted and the game crashes. Planet's PIC also has a sync 4 times the threshold, which the
-loader allows and the ROM (2 times) rejects.
+at 2 it lands one band low, 64 words stay encrypted and the game crashes.
 
 Copied with the monitor (`M BALLY.GMC`), the parts load but are encrypted
 junk at the wrong addresses. Re-recorded at the ROM's own speed with
 `--bin2wav`, Bally's three files still load and run.
+
+How the five differ:
+
+- **Bally**: its stub writes its copying loop wherever the decryption
+  ends, so the count from the timer doesn't matter; it was the one BIL
+  game that ran before `bk`'s ROM timing changed.
+- **Planet**: recorded at 31.3 kHz. Its picture's data sync is 4 times
+  the threshold (1.63 ms), which the loader accepts and the ROM (2 times)
+  rejects, so the ROM alone can't read the picture.
+- **Runing**: the common scheme, nothing else of its own.
+- **Second**: a patched loader. At 005056 `MOV #012000, R5` replaces
+  `BIC #7, R5`, making the first stage's timer reload 012000 instead of
+  002330, and its last word is 000043 instead of `HALT`, which keeps the
+  loader's byte sum the same as the others'. Its stub reads the timer at
+  a different place. Whether BIL or a later hand patched it isn't known.
+- **Superman**: its loader block is the fastest of the five (80 µs
+  half-periods), and its loader has `RESET` where the others have a `NOP`
+  (002044).
 
 ### DIM corp. (Expert, Soldier) and AD corp. (Destroyer)
 
