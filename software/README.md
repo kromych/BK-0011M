@@ -57,6 +57,12 @@ so nothing more happens. More recordings, some of which load whole:
 [tapes/README.md](tapes/README.md); copy-protected games:
 [tapes/protected/README.md](tapes/protected/README.md).
 
+## From BKEmu
+
+Programs, disks and tapes that come with gid's BKEmu emulator, which this
+folder didn't already have (a Boulder Dash, a K1801VM1 test, ANDOS and
+CSIDOS work disks, AltPro and RT-11 disks): [bkemu/README.md](bkemu/README.md).
+
 ## Listings
 
 `cargo run --release -p romdis` disassembles everything here into
