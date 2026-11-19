@@ -85,7 +85,8 @@ Enter is ВВОД, left Ctrl АР2, right Ctrl СУ, Home and End ЛАТ and Р�
 СТОП, and F1–F9 the BK's function keys. Alt (Cmd on a Mac) gives the
 emulator's commands: O opens a program, tape, disk or state file, S and L
 save and load the state, D stops in the debugger, V pastes text, F
-fast-forwards, M switches between the color and mono monitors. Under the
+fast-forwards, M switches between the color and mono monitors, T lets you
+hear the tape load (at its real speed). Under the
 screen, a picture of the BK keyboard lights the keys as you type and can be
 clicked, beside lights for power, the tape motor and the disk. An INI file
 remaps the keys (`--keys`, `--write-keys`). `bk --help` lists every option;

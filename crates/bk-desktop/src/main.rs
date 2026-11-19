@@ -51,6 +51,8 @@ usage: bk [options]
   --irq2-50hz        BK-0010: a 50 Hz interrupt on vector 100 once a program
                      has set the vector (FOCAL's FCLK counts them)
   --mute             no sound
+  --tape-sound       hear the tape being read, as from the cassette recorder;
+                     it then plays at its real speed (Alt+T switches)
   --state FILE       where Alt+S saves the machine state and Alt+L loads it
                      (default: bk0011m.state or bk0010.state)
   --restore FILE     start from a saved state (same model, ROMs and devices)
@@ -95,8 +97,9 @@ a disk image in drive 0, a .state is restored), Alt+S saves the state,
 Alt+L loads it, Alt+D stops in the debugger, Alt+V types the text on the
 clipboard into the BK, Alt+F switches fast-forward on and off, Alt+M
 switches between the color and mono monitors (programs using 512-dot mode
-look right only in mono). The emulator also runs fast by itself while the
-tape moves with a recording to play or record.
+look right only in mono), Alt+T switches the tape sound on and off. The
+emulator also runs fast by itself while the tape moves with a recording to
+play or record, unless the tape sound is on.
 
 The numeric keypad (8 4 6 2, fire 0 and 5) and any gamepad are a joystick
 on the parallel port. The keyboard under the screen shows the keys
@@ -123,6 +126,7 @@ struct Options {
     record: Option<PathBuf>,
     wav: Option<PathBuf>,
     mute: bool,
+    tape_sound: bool,
     wait: u64,
     state: Option<PathBuf>,
     restore: Option<PathBuf>,
@@ -157,6 +161,7 @@ fn parse_args() -> Result<Options, String> {
         record: None,
         wav: None,
         mute: false,
+        tape_sound: false,
         wait: 50,
         state: None,
         restore: None,
@@ -195,6 +200,7 @@ fn parse_args() -> Result<Options, String> {
             "--record" => o.record = Some(value("--record")?.into()),
             "--wav" => o.wav = Some(value("--wav")?.into()),
             "--mute" => o.mute = true,
+            "--tape-sound" => o.tape_sound = true,
             "--state" => o.state = Some(value("--state")?.into()),
             "--restore" => o.restore = Some(value("--restore")?.into()),
             "--save-state" => o.save_state = Some(value("--save-state")?.into()),
@@ -408,6 +414,7 @@ fn main() {
         process::exit(1);
     });
     let mut machine = Machine::new(roms, options.config);
+    machine.set_tape_sound(options.tape_sound);
     if let Some(path) = &options.serial_in {
         match std::fs::read(path) {
             Ok(bytes) => machine.serial_send(&bytes),
@@ -1017,18 +1024,20 @@ fn run_window(
     } else {
         "Alt+V"
     };
-    let title = |m: Monitor, pasting: usize, fast: bool| {
+    let title = |m: Monitor, pasting: usize, fast: bool, tape_sound: bool| {
         let monitor = if m == Monitor::Mono { "mono" } else { "color" };
         let fast = if fast { " — fast-forward" } else { "" };
+        let tape = if tape_sound { " — tape sound" } else { "" };
         if pasting > 0 {
-            format!("{model} ({monitor}){fast} — pasting, {pasting} keys to go")
+            format!("{model} ({monitor}){fast}{tape} — pasting, {pasting} keys to go")
         } else {
-            format!("{model} ({monitor}){fast} — {paste_key} pastes text")
+            format!("{model} ({monitor}){fast}{tape} — {paste_key} pastes text")
         }
     };
-    let mut shown_title = title(machine.monitor(), 0, false);
+    let mut shown_title = title(machine.monitor(), 0, false, machine.tape_sound());
     // Fast-forward: switched by Alt+F, and on by itself while the tape
-    // moves with something to play or record.
+    // moves with something to play or record, unless the tape is to be
+    // heard.
     let mut fast_forward = false;
     let mut window = Window::new(
         &shown_title,
@@ -1102,6 +1111,10 @@ fn run_window(
                     Key::V => paste(&mut typist),
                     Key::F => {
                         fast_forward = !fast_forward;
+                        Ok(())
+                    }
+                    Key::T => {
+                        machine.set_tape_sound(!machine.tape_sound());
                         Ok(())
                     }
                     Key::M => {
@@ -1178,7 +1191,7 @@ fn run_window(
         if console.stopped {
             console.poll(machine);
         }
-        let fast = powered && (fast_forward || machine.tape_busy());
+        let fast = powered && (fast_forward || (machine.tape_busy() && !machine.tape_sound()));
         if powered && !console.stopped {
             // With sound, run frames until about 70 ms are queued (at most
             // 4 at a time); without, one frame per window update. Fast:
@@ -1243,7 +1256,12 @@ fn run_window(
             &|code| held.contains(&code),
             ar2,
         );
-        let wanted = title(machine.monitor(), typist.pending(), fast);
+        let wanted = title(
+            machine.monitor(),
+            typist.pending(),
+            fast,
+            machine.tape_sound(),
+        );
         if wanted != shown_title {
             window.set_title(&wanted);
             shown_title = wanted;

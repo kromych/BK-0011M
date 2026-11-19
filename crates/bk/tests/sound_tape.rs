@@ -86,6 +86,33 @@ fn speaker_pitch_matches_instruction_timing() {
     assert_eq!(samples.len(), bk::AUDIO_RATE as usize);
 }
 
+/// With the tape sound on, a tape that plays (the motor running) is heard;
+/// with it off (the default), only the BK's own sound is.
+#[test]
+fn the_tape_is_heard_only_with_the_tape_sound_on() {
+    let Some((mut m, _)) = run_program(Model::Bk0010, "MOV #20, @#177716\nDONE: BR DONE") else {
+        return;
+    };
+    let file = BinFile {
+        address: 0o1000,
+        data: vec![0o125; 200],
+    };
+    let loudness = |m: &mut Machine, on: bool| {
+        m.insert_tape(Some(bk::encode_tape("NOISE", &file).unwrap()));
+        m.set_tape_sound(on);
+        frames(m, 50);
+        let s = m.take_audio();
+        s.iter().map(|x| x * x).sum::<f32>() / s.len() as f32
+    };
+    frames(&mut m, 5);
+    m.take_audio();
+    let off = loudness(&mut m, false);
+    let on = loudness(&mut m, true);
+    assert!(m.tape_motor_on());
+    assert!(off < 1e-6, "silent without the tape sound: {off}");
+    assert!(on > 1e-3, "the tape is heard: {on}");
+}
+
 /// Save a BASIC program to tape through the ROM, then load it back from the
 /// recording, also through the ROM.
 #[test]

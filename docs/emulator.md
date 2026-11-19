@@ -88,6 +88,7 @@ Hardware options:
 | `--serial-out FILE` | BK-0010: what the BK sends on the serial line (`EMT 42`, `EMT 46`) is added to FILE, as raw bytes |
 | `--irq2-50hz` | BK-0010: a 50 Hz interrupt on vector 100, once a program has set the vector (for FOCAL's `FCLK()`, see [focal.md](focal.md#fclk)) |
 | `--mute` | no sound |
+| `--tape-sound` | hear the tape being read, as from the cassette recorder's speaker; the tape then plays at its real speed. In the window, Alt+T (Cmd+T) switches it |
 
 The color/mono switch matters: the BK has one video mode of 512 × 256 dots
 in black and white or 256 × 256 in four colors, and the same screen memory
@@ -165,8 +166,9 @@ Emulator commands use Alt (or Cmd on a Mac) so they never reach the BK:
 | Alt+L | load the saved state |
 | Alt+D | stop in the debugger (see [The debugger](#the-debugger)) |
 | Alt+V | type the text on the clipboard into the BK |
-| Alt+F | fast-forward on or off: run as fast as the PC allows, without sound (it also runs fast by itself while the tape moves with a recording to play or record) |
+| Alt+F | fast-forward on or off: run as fast as the PC allows, without sound (it also runs fast by itself while the tape moves with a recording to play or record, unless the tape sound is on) |
 | Alt+M | switch between the color and the mono monitor |
+| Alt+T | tape sound on or off: hear the tape being read, at its real speed |
 
 On macOS, F10 and F11 are usually taken by the system, which is why РУС and
 ЛАТ are also on End and Home.
@@ -290,7 +292,9 @@ bk --bk0010 --tape software/tapes/survey-4.mp3
 
 The recording plays while the BK runs the tape motor (the emulator runs as
 fast as it can meanwhile, so a long load takes seconds, not minutes; the
-window title says "fast-forward"), and the ROM decodes it exactly as it
+window title says "fast-forward"; to hear the tape load at its real speed
+instead, as from the cassette recorder's speaker, switch the tape sound on
+with Alt+T or `--tape-sound`), and the ROM decodes it exactly as it
 would a cassette, so you start the load from the BK (for example with the
 monitor's `M` command, see [monitor.md](monitor.md)). A WAV can be 8 or
 16 bits, any rate, mono or stereo. Programs in the standard

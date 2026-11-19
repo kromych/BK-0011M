@@ -293,6 +293,11 @@ impl Board {
             }
     }
 
+    /// The tape signal under the head, as last set.
+    pub fn tape_input(&self) -> bool {
+        self.sel1 & sel1::TAPE_IN == 0
+    }
+
     /// The tape signal under the head.
     pub fn set_tape_input(&mut self, high: bool) {
         let bit = if high { 0 } else { sel1::TAPE_IN };

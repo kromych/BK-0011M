@@ -100,6 +100,10 @@ pub struct TraceEntry {
     pub words: [u16; 3],
 }
 
+/// The level of a high tape signal in the sound with [`Machine::set_tape_sound`]
+/// (the speaker's tape-out bit is 1.0).
+const TAPE_SOUND_LEVEL: f32 = 0.5;
+
 pub struct Machine {
     cpu: Cpu,
     board: Board,
@@ -124,6 +128,9 @@ pub struct Machine {
     files: Option<Box<dyn TapeFiles>>,
     /// Entry of the ROM's tape routine, where fast tape steps in.
     tape_hook: Option<u16>,
+    /// Mix the tape being played into the sound, as the cassette
+    /// recorder's own speaker would play it.
+    tape_sound: bool,
 }
 
 impl Machine {
@@ -136,6 +143,7 @@ impl Machine {
             audio: Audio::new(hz, AUDIO_RATE),
             files: None,
             tape_hook: None,
+            tape_sound: false,
             frame_cycles,
             cpu: Cpu::new(),
             board: Board::new(Memory::new(roms, config.fdd)),
@@ -311,6 +319,11 @@ impl Machine {
             }
         }
         let speaker_level = self.board.speaker_level();
+        let tape = if self.tape_sound && self.board.tape_input() && self.tape_busy() {
+            TAPE_SOUND_LEVEL
+        } else {
+            0.0
+        };
         let covox = if self.config.covox {
             f32::from(self.board.port_out as u8) / 255.0
         } else {
@@ -336,7 +349,8 @@ impl Machine {
         // change takes effect from the next instruction (a fraction of an
         // audio sample).
         let ay = self.board.ay.as_ref().map_or(0.0, ay::Ay::output);
-        self.audio.advance(cycles, speaker_level + covox + ay);
+        self.audio
+            .advance(cycles, speaker_level + covox + ay + tape);
         cycles
     }
 
@@ -357,6 +371,17 @@ impl Machine {
     /// Put a tape in the recorder; it plays while the BK runs the motor.
     pub fn insert_tape(&mut self, tape: Option<TapeSignal>) {
         self.board.tape_in = tape;
+    }
+
+    /// Play the tape being read through the sound as well (off at first),
+    /// as the cassette recorder's speaker does. What the BK writes to tape
+    /// is heard anyway: it drives the BK's own speaker.
+    pub fn set_tape_sound(&mut self, on: bool) {
+        self.tape_sound = on;
+    }
+
+    pub fn tape_sound(&self) -> bool {
+        self.tape_sound
     }
 
     /// Start recording what the BK writes to tape (while the motor runs).
