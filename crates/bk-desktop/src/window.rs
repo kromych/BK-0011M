@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use bk::{Machine, Model, Monitor, SCREEN_HEIGHT, SCREEN_WIDTH};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::PhysicalKey;
@@ -613,12 +613,28 @@ impl ApplicationHandler for App<'_> {
         if self.window.is_some() {
             return;
         }
-        // Half the picture's size: on a 2x (Retina) display each pixel of
-        // the picture is a pixel of the screen.
-        let attributes = Window::default_attributes()
+        // As a video player opens the picture: a point of the display for
+        // each pixel of it, or as much as fits the display, centred.
+        let mut attributes = Window::default_attributes()
             .with_title(&self.shown_title)
             .with_inner_size(LogicalSize::new(PICTURE_W / 2.0, PICTURE_H / 2.0))
             .with_min_inner_size(LogicalSize::new(PICTURE_W / 4.0, PICTURE_H / 4.0));
+        if let Some(monitor) = event_loop.primary_monitor() {
+            let scale = monitor.scale_factor();
+            let area = monitor.size().to_logical::<f64>(scale);
+            let origin = monitor.position().to_logical::<f64>(scale);
+            // Leave room for the menu bar, the title bar and a dock.
+            let fit = (0.95 * area.width / PICTURE_W)
+                .min(0.88 * area.height / PICTURE_H)
+                .min(1.0);
+            let (w, h) = (PICTURE_W * fit, PICTURE_H * fit);
+            attributes = attributes
+                .with_inner_size(LogicalSize::new(w, h))
+                .with_position(LogicalPosition::new(
+                    origin.x + (area.width - w) / 2.0,
+                    origin.y + (area.height - h) / 2.0,
+                ));
+        }
         let window = match event_loop.create_window(attributes) {
             Ok(w) => Rc::new(w),
             Err(e) => return self.fail(event_loop, e.to_string()),

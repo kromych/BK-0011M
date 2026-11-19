@@ -88,8 +88,10 @@ usage: bk [options]
                      in РУС mode, switching back to ЛАТ after them)
   --wait N           headless: frames to run after typing (default 50)
   --screenshot FILE  headless: save the screen as PNG when done
-  --panel            with --screenshot: include the keyboard panel, as the
-                     window shows it
+  --video FILE       headless: record the whole run, picture and sound, as a
+                     video (MP4; needs ffmpeg)
+  --panel            with --screenshot or --video: include the keyboard
+                     panel, as the window shows it
   --wav FILE         headless: save the sound as a WAV file
 
 Keys (by default; --keys remaps them): letters, digits and punctuation as
@@ -129,6 +131,7 @@ struct Options {
     frames: Option<u64>,
     text: Option<String>,
     screenshot: Option<PathBuf>,
+    video: Option<PathBuf>,
     files: Option<PathBuf>,
     disks: Vec<PathBuf>,
     tape: Option<PathBuf>,
@@ -166,6 +169,7 @@ fn parse_args() -> Result<Options, String> {
         frames: None,
         text: None,
         screenshot: None,
+        video: None,
         files: None,
         disks: Vec::new(),
         tape: None,
@@ -264,6 +268,7 @@ fn parse_args() -> Result<Options, String> {
             }
             "--type" => o.text = Some(unescape(&value("--type")?)?),
             "--screenshot" => o.screenshot = Some(value("--screenshot")?.into()),
+            "--video" => o.video = Some(value("--video")?.into()),
             "-h" | "--help" => return Err(String::new()),
             _ => return Err(format!("unknown option {arg}")),
         }
@@ -481,6 +486,7 @@ fn main() {
     let headless = options.frames.is_some()
         || options.text.is_some()
         || options.screenshot.is_some()
+        || options.video.is_some()
         || options.wav.is_some()
         || options.save_state.is_some();
     let state_file = options.state.clone().unwrap_or_else(|| {
@@ -662,21 +668,22 @@ fn unescape(s: &str) -> Result<String, String> {
 }
 
 fn run_headless(machine: &mut Machine, options: &Options) -> Result<(), String> {
-    for _ in 0..options.frames.unwrap_or(100) {
-        machine.run_frame();
-    }
+    let panel = options
+        .panel
+        .then(|| (model_label(options), options.config.fdd));
+    let mut recorder = match &options.video {
+        Some(path) => Some(Recorder::start(path, panel)?),
+        None => None,
+    };
+    run_frames(machine, options.frames.unwrap_or(100), &mut recorder)?;
     if let Some(text) = &options.text {
         for (i, part) in text.split(PAUSE).enumerate() {
             if i > 0 {
-                for _ in 0..50 {
-                    machine.run_frame();
-                }
+                run_frames(machine, 50, &mut recorder)?;
             }
-            machine.type_text(part);
+            type_text(machine, part, &mut recorder)?;
         }
-        for _ in 0..options.wait {
-            machine.run_frame();
-        }
+        run_frames(machine, options.wait, &mut recorder)?;
     }
     if options.debug {
         let mut console = console::Console::new();
@@ -693,23 +700,167 @@ fn run_headless(machine: &mut Machine, options: &Options) -> Result<(), String> 
         if cpu.is_halted() { "  HALTED" } else { "" }
     );
     if let Some(path) = &options.screenshot {
-        let panel = options
-            .panel
-            .then(|| (model_label(options), options.config.fdd));
         save_png(machine, path, panel)?;
     }
     if let Some(path) = &options.save_state {
         save_state(machine, path)?;
     }
     Outputs::of(options).write(machine)?;
+    // The recorder has taken the sound as it went.
+    let samples = match recorder {
+        Some(r) => r.finish(machine.audio_rate())?,
+        None => machine.take_audio(),
+    };
     if let Some(path) = &options.wav {
         let wav = Wav {
             rate: machine.audio_rate(),
-            samples: machine.take_audio(),
+            samples,
         };
         std::fs::write(path, wav.to_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok(())
+}
+
+/// Type `text` (BK key codes) as [`Machine::type_text`] does, with the same
+/// timing, but a frame at a time so that a recording has every frame.
+fn type_text(
+    machine: &mut Machine,
+    text: &str,
+    recorder: &mut Option<Recorder>,
+) -> Result<(), String> {
+    for c in text.chars() {
+        let code = match c {
+            '\0'..='\u{ff}' => c as u8,
+            _ => continue,
+        };
+        // Until the program has read the last key.
+        for _ in 0..500 {
+            if !machine.key_pending() {
+                break;
+            }
+            run_frames(machine, 1, recorder)?;
+        }
+        machine.key_down(code, false);
+        run_frames(machine, 3, recorder)?;
+        machine.key_up(code);
+        let pause = match code {
+            0o012 => 100,
+            0o200.. => 10,
+            _ => 3,
+        };
+        run_frames(machine, pause, recorder)?;
+    }
+    Ok(())
+}
+
+/// Run `n` frames, recording each when there is a recorder.
+fn run_frames(
+    machine: &mut Machine,
+    n: u64,
+    recorder: &mut Option<Recorder>,
+) -> Result<(), String> {
+    for _ in 0..n {
+        machine.run_frame();
+        if let Some(r) = recorder {
+            r.frame(machine)?;
+        }
+    }
+    Ok(())
+}
+
+/// Records a headless run as a video (`--video`): every frame goes to
+/// ffmpeg as it is made, the sound is kept and added at the end.
+struct Recorder {
+    path: PathBuf,
+    ffmpeg: process::Child,
+    /// The picture alone, until the sound is added.
+    silent: PathBuf,
+    panel: Option<(&'static str, bool)>,
+    sound: Vec<f32>,
+}
+
+impl Recorder {
+    fn start(path: &Path, panel: Option<(&'static str, bool)>) -> Result<Recorder, String> {
+        let height = OUT_SCREEN_HEIGHT + if panel.is_some() { OUT_PANEL_HEIGHT } else { 0 };
+        let silent = std::env::temp_dir().join(format!("bk-video-{}.mp4", process::id()));
+        let ffmpeg = process::Command::new("ffmpeg")
+            .args([
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+            ])
+            .args([
+                "-s",
+                &format!("{OUT_WIDTH}x{height}"),
+                "-r",
+                "50",
+                "-i",
+                "-",
+            ])
+            .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"])
+            .arg(&silent)
+            .stdin(process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("--video needs ffmpeg: {e}"))?;
+        Ok(Recorder {
+            path: path.to_path_buf(),
+            ffmpeg,
+            silent,
+            panel,
+            sound: Vec::new(),
+        })
+    }
+
+    fn frame(&mut self, machine: &mut Machine) -> Result<(), String> {
+        use std::io::Write as _;
+        let rgb: Vec<u8> = picture(machine, self.panel)
+            .iter()
+            .flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8])
+            .collect();
+        let stdin = self.ffmpeg.stdin.as_mut().ok_or("ffmpeg went away")?;
+        stdin.write_all(&rgb).map_err(|e| format!("ffmpeg: {e}"))?;
+        self.sound.extend(machine.take_audio());
+        Ok(())
+    }
+
+    /// Finish the picture, add the sound, and give the sound back.
+    fn finish(mut self, rate: u32) -> Result<Vec<f32>, String> {
+        drop(self.ffmpeg.stdin.take());
+        let ok = self.ffmpeg.wait().map_err(|e| e.to_string())?.success();
+        if !ok {
+            return Err("ffmpeg failed to encode the video".into());
+        }
+        let wav = self.silent.with_extension("wav");
+        let sound = Wav {
+            rate,
+            samples: self.sound,
+        };
+        std::fs::write(&wav, sound.to_bytes()).map_err(|e| format!("{}: {e}", wav.display()))?;
+        let muxed = process::Command::new("ffmpeg")
+            .args(["-loglevel", "error", "-y", "-i"])
+            .arg(&self.silent)
+            .arg("-i")
+            .arg(&wav)
+            .args(["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest"])
+            .arg(&self.path)
+            .status()
+            .map_err(|e| format!("ffmpeg: {e}"))?
+            .success();
+        let _ = std::fs::remove_file(&self.silent);
+        let _ = std::fs::remove_file(&wav);
+        if !muxed {
+            return Err(format!(
+                "{}: ffmpeg failed to add the sound",
+                self.path.display()
+            ));
+        }
+        eprintln!("bk: recorded {}", self.path.display());
+        Ok(sound.samples)
+    }
 }
 
 /// The picture as shown: the BK's 512 x 256 dots at the 4:3 of a TV, each
@@ -797,9 +948,10 @@ fn double_panel(small: &[u32], out: &mut [u32]) {
     }
 }
 
-/// Save the screen as a PNG; with `panel`, the keyboard panel under it, as
-/// the window shows it (labelled `model`).
-fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Result<(), String> {
+/// The picture as the window shows it, [`OUT_WIDTH`] wide: the screen, and
+/// with `panel` the keyboard panel under it (labelled `model`, with the
+/// disk light when `fdd`), lighting the keys the BK holds down.
+fn picture(machine: &Machine, panel: Option<(&str, bool)>) -> Vec<u32> {
     let mut frame = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT];
     let mut pixels = Vec::new();
     tv_frame(machine, &mut frame, &mut pixels);
@@ -817,9 +969,17 @@ fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Resu
             fast: false,
             model,
         };
-        panel::Panel::new(SCREEN_WIDTH).draw(&mut small, &lights, &|_| false, false);
+        let held = machine.held_keys();
+        panel::Panel::new(SCREEN_WIDTH).draw(&mut small, &lights, &|c| held.contains(&c), false);
         double_panel(&small, &mut pixels[screen..]);
     }
+    pixels
+}
+
+/// Save the screen as a PNG; with `panel`, the keyboard panel under it, as
+/// the window shows it (labelled `model`).
+fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Result<(), String> {
+    let pixels = picture(machine, panel);
     let height = pixels.len() / OUT_WIDTH;
     let rgb: Vec<u8> = pixels
         .iter()

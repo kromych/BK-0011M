@@ -110,6 +110,10 @@ it.
 
 - Keys light up while they are pressed, and for at least 150 ms after a
   PC key is typed, so you can see what each PC key does.
+- The window opens as a video player would show the picture: a point of
+  the display for each pixel of it (the screen 1024 × 768 at 4:3, the
+  keyboard under it), smaller only if that doesn't fit, and centred. Any
+  size or full screen keeps those proportions.
 - Clicking a key types it. АР2, СУ and the register key ⇧ (shift: the
   other case, or the symbol on the key's other half) latch: click one, then
   the key it should apply to. СТОП interrupts the processor, as on the BK.
@@ -467,8 +471,8 @@ its breakpoints and lets the machine run on.
 
 ## Headless runs and automation
 
-With any of `--frames`, `--type`, `--screenshot`, `--wav` or `--save-state`,
-`bk` runs without a window, as fast as it can, and exits. This is how the
+With any of `--frames`, `--type`, `--screenshot`, `--video`, `--wav` or
+`--save-state`, `bk` runs without a window, as fast as it can, and exits. This is how the
 other guides' examples were checked.
 
 | Option | Effect |
@@ -477,6 +481,7 @@ other guides' examples were checked.
 | `--type TEXT` | then type TEXT: `\n` is ВВОД, `\NNN` any key code in octal up to 377 (`\017` ЛАТ, `\016` РУС, `\003` КТ, `\201` ПОВТ, `\211` ТАБ; codes 200 and up go through the function-key vector 274 with their low 7 bits, as АР2 combinations do, so `\261` is АР2+1), `\p` a one-second pause; Russian letters are typed in РУС mode, switching back to ЛАТ after them |
 | `--wait N` | frames to run after typing (default 50) |
 | `--screenshot FILE` | save the screen as a PNG at the end, 1024 × 768: the BK's 512 × 256 dots at the 4:3 of a TV, as the window shows them (`--panel`: with the on-screen keyboard under it, as in the window) |
+| `--video FILE` | record the whole run, every frame and its sound, as a video (MP4, 50 frames a second, 1024 × 768; with `--panel`, 1024 × 1152 with the on-screen keyboard, its keys lighting as `--type` types and the tape's time and bar). Needs `ffmpeg` |
 | `--wav FILE` | save the sound as a WAV file |
 | `--save-state FILE` | save the machine state at the end |
 | `--debug` | after the rest, run debugger commands from standard input |
@@ -487,7 +492,16 @@ At the end `bk` prints the frame count and the CPU state:
 
 ```sh
 $ bk --frames 200 --type 'PRINT 2+2\n' --screenshot out.png
-frames 407  PC 142416  PSW 000350  SP 001754
+frames 407  PC 142510  PSW 000344  SP 044476
+```
+
+A film of a protected game loading, heard at the tape's speed, with the
+on-screen keyboard and the tape's progress:
+
+```sh
+bk --bk0010 --tape software/tapes/protected/Indiana-Jones.wav.gz --tape-sound \
+   --frames 150 --type 'MONIT\n\p\pM\nINDIANA JONES\n' --wait 4600 \
+   --video indiana-jones.mp4 --panel
 ```
 
 A scripted debugger session:

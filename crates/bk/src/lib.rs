@@ -379,6 +379,14 @@ impl Machine {
         }
     }
 
+    /// How many CPU clocks ROM and the external I/O registers take to reply
+    /// to a bus cycle (2 and 2 at first; see `board.rs`). For experiments
+    /// with the machine's timing.
+    pub fn set_reply_delays(&mut self, rom: u32, io: u32) {
+        self.board.rom_wait = rom;
+        self.board.io_wait = io;
+    }
+
     /// Whether the recorder is wired to the BK's motor relay (yes at
     /// first). Without it, once the BK first runs the motor the tape plays
     /// on to its end, as on a recorder started by hand, and a tape put in
@@ -1050,6 +1058,12 @@ impl Machine {
         }
         self.set_mem_word(addr, value);
         true
+    }
+
+    /// The BK keys held down at the moment (codes), as typed by
+    /// [`Machine::type_text`] or pressed with [`Machine::key_down`].
+    pub fn held_keys(&self) -> &[u8] {
+        &self.held_keys
     }
 
     /// The CPU, to change registers from a debugger.
