@@ -113,3 +113,46 @@ registers and returns into BASIC with `RTI`, then run with
 
 The chip model left the same bytes (`A B B B C` at 3220) as the emulator:
 the bug is the ROM's.
+
+## Running a tape load
+
+The harness can also play a tape into the chip model, to compare a load
+with the emulator's. `crates/bk/examples/tape_snapshot.rs` takes the
+emulator to the moment the BK-0010 monitor's `M` command enters its tape
+routine (the motor not yet started) and writes the memory, a stub that
+returns into the routine, and the recording as tape levels:
+
+    cargo run --release -p bk --example tape_snapshot -- roms \
+        software/tapes/protected/Expert.wav.gz EXPERT snap
+    IMAGE=1 MIST=1 SCALE=8 ROM=1 SEL1=$(cat snap/sel1) TAPE=snap/tape.lvl \
+        DUMP=snap/chip.img MAXCLK=400000000 ./obj_dir/tb snap/mem.img 32 1
+
+`TAPE` feeds the levels into bit 5 of 177716 (inverted, as the emulator
+does) while the motor runs, `ROM=1` leaves writes to 100000-177577
+unanswered as the MiST core does (a bus error), and the CPU's own
+registers 177700-177717 read back what the CPU drives, as the core wires
+them. `SCALE=8` runs 4 system clocks per CPU clock instead of 32, with the
+037 model's phases scaled to match: the timing benchmark gives identical
+results, 8 times faster (about 0.2 million CPU clocks a second).
+
+The MiST core itself has no tape input: its SEL1 value is
+`{start_addr, 1'b1, ~key_down, 3'b000, super_flg, 2'b00}` (bk0011m.sv), so
+bit 5 always reads 0, and it loads programs only as BIN files from its SD
+card. The tape input here is the harness's, not the core's.
+
+`WRITES=from:to` logs every write the CPU makes between those CPU clocks.
+
+Results (2026-11-18):
+
+- A standard tape (600 random bytes written by `--bin2wav`) loads on the
+  chip model byte for byte, with a good checksum: the tape input works.
+- Ferrari (software/tapes/protected) fails on the chip model, earlier than
+  in the emulator. Its file overwrites the ROM's store step (cell 304) as
+  it loads, so that a store lands in ROM and the bus error starts its
+  loader through vector 4. The chip model reads the file's bytes correctly
+  up to that point, then reads the 1 bits of bytes 306-307 as 0, though
+  they are recorded exactly as every earlier 1 bit (decoded directly from
+  the recording), and never takes the bus error. The emulator reads them
+  right and starts the loader, then fails in the loader's second stage
+  (see issue #11). Neither matches the real machine these recordings were
+  tuned on.
