@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use minifb::Key;
+use crate::hostkey::Key;
 
 /// What a host key does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,7 +43,7 @@ pub enum Binding {
     Joystick(u8),
 }
 
-/// Host key names in the INI file: minifb's key names, any case.
+/// Host key names in the INI file, any case.
 const HOST_KEYS: &[(&str, Key)] = &[
     ("A", Key::A),
     ("B", Key::B),
@@ -412,7 +412,7 @@ impl Keymap {
              ; the color and mono monitors. JOY-UP JOY-RIGHT JOY-DOWN JOY-LEFT\n\
              ; JOY-FIRE JOY-FIRE2 JOY-BUTTON4 JOY-BUTTON7 are joystick lines on\n\
              ; the parallel port. An empty value unmaps a key. Host key\n\
-             ; names are minifb's (A, Key1, F1, Enter, LeftBracket, NumPad5, ...).\n\
+             ; names: A, Key1, F1, Enter, LeftBracket, NumPad5, ... (the key's place on a US keyboard).\n\
              ; Alt and Cmd are kept for the emulator's own commands.\n\n[keys]\n",
         );
         let mut entries: Vec<(&str, Binding)> =

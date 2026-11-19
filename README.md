@@ -113,7 +113,7 @@ remaps the keys (`--keys`, `--write-keys`). `bk --help` lists every option;
 |---|---|
 | `crates/vm1` | the K1801VM1 CPU: decoder, executor, timing, disassembler, assembler. No I/O |
 | `crates/bk` | the machine: memory and paging, devices, video, sound, tape, floppy, save states, debugger. No window, sound or file-system dependencies |
-| `crates/bk-desktop` | the `bk` program: window (minifb), sound (cpal), options |
+| `crates/bk-desktop` | the `bk` program: window (winit, softbuffer), sound (cpal), options |
 | `crates/romdis` | writes commented disassembly listings of the ROMs and of the programs in `software/`, on disks and tapes too |
 | `annotations/` | names and comments for the listings (system calls from the manuals) |
 | `tools/mkandos.py` | makes an ANDOS boot disk holding BK programs |

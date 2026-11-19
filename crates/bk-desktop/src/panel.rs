@@ -457,17 +457,6 @@ fn fill_rect(buf: &mut [u32], width: usize, x: usize, y: usize, w: usize, h: usi
     }
 }
 
-/// Where the mouse is in buffer coordinates, for a buffer of `buf` pixels
-/// shown centered and scaled to fit (keeping its aspect ratio) in a window
-/// of `window` pixels.
-pub fn to_buffer(mouse: (f32, f32), window: (usize, usize), buf: (usize, usize)) -> (f32, f32) {
-    let (ww, wh) = (window.0 as f32, window.1 as f32);
-    let (bw, bh) = (buf.0 as f32, buf.1 as f32);
-    let scale = (ww / bw).min(wh / bh);
-    let (ox, oy) = ((ww - bw * scale) / 2.0, (wh - bh * scale) / 2.0);
-    ((mouse.0 - ox) / scale, (mouse.1 - oy) / scale)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -553,18 +542,6 @@ mod tests {
         assert!(lit_by(0o055, &only(0o075)), "= lights -");
         assert!(!lit_by(0o060, &only(0o040)), "space doesn't light 0");
         assert!(lit_by(0o040, &only(0o040)), "space lights the space bar");
-    }
-
-    #[test]
-    fn mouse_mapping_undoes_the_window_scaling() {
-        // Twice the size: plain scaling.
-        assert_eq!(
-            to_buffer((100.0, 50.0), (1024, 1404), (512, 702)),
-            (50.0, 25.0)
-        );
-        // A wider window letterboxes left and right.
-        let (x, y) = to_buffer((612.0, 351.0), (1224, 702), (512, 702));
-        assert_eq!((x, y), (256.0, 351.0));
     }
 
     /// `PANEL_PNG=out.png cargo test -p bk-desktop panel_picture` saves a picture.

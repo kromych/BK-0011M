@@ -226,7 +226,7 @@ Insert = СТОП        ; the stop key
 Backquote =          ; nothing
 ```
 
-PC keys have minifb's names: `A`–`Z`, `Key0`–`Key9`, `F1`–`F15`, `Enter`,
+PC keys are named by their place on a US keyboard: `A`–`Z`, `Key0`–`Key9`, `F1`–`F15`, `Enter`,
 `Backspace`, `Tab`, `Space`, `Escape`, `Left`, `Right`, `Up`, `Down`,
 `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete`, `Comma`,
 `Period`, `Slash`, `Semicolon`, `Apostrophe`, `Minus`, `Equal`,
