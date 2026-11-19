@@ -62,6 +62,50 @@ impl Audio {
     }
 }
 
+/// The mean absolute deviation: how strong a signal is.
+fn spread(samples: &[f32]) -> f32 {
+    let n = samples.len().max(1) as f32;
+    let mean = samples.iter().sum::<f32>() / n;
+    samples.iter().map(|s| (s - mean).abs()).sum::<f32>() / n
+}
+
+/// How far `b` lags `a` (so that `b[i + lag]` matches `a[i]`), within
+/// `max_lag` samples, and the correlation there (-1 to 1). Measured on up
+/// to 16 stretches of 4096 samples spread through the recording.
+fn best_lag(a: &[f32], b: &[f32], max_lag: isize) -> (isize, f32) {
+    const WINDOW: usize = 4096;
+    let len = a.len().min(b.len());
+    let margin = max_lag.unsigned_abs();
+    if len < WINDOW + 2 * margin {
+        return (0, 0.0);
+    }
+    let mean = |s: &[f32]| s[..len].iter().sum::<f32>() / len as f32;
+    let (ma, mb) = (mean(a), mean(b));
+    let windows = 16.min((len - 2 * margin) / WINDOW);
+    let step = (len - 2 * margin - WINDOW) / windows.max(1);
+    let starts: Vec<usize> = (0..windows).map(|w| margin + w * step).collect();
+    let energy = |s: &[f32], m: f32, shift: isize| -> f32 {
+        starts
+            .iter()
+            .flat_map(|&st| (st..st + WINDOW).map(move |i| (i as isize + shift) as usize))
+            .map(|i| (s[i] - m).powi(2))
+            .sum()
+    };
+    let ea = energy(a, ma, 0);
+    (-max_lag..=max_lag)
+        .map(|lag| {
+            let cross: f32 = starts
+                .iter()
+                .flat_map(|&st| st..st + WINDOW)
+                .map(|i| (a[i] - ma) * (b[(i as isize + lag) as usize] - mb))
+                .sum();
+            let norm = (ea * energy(b, mb, lag)).sqrt();
+            (lag, if norm > 0.0 { cross / norm } else { 0.0 })
+        })
+        .max_by(|x, y| x.1.abs().total_cmp(&y.1.abs()))
+        .unwrap_or((0, 0.0))
+}
+
 /// Mono audio, samples in -1.0..=1.0.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Wav {
@@ -70,8 +114,8 @@ pub struct Wav {
 }
 
 impl Wav {
-    /// Read a PCM WAV file (8 or 16 bits, any number of channels, mixed
-    /// down to mono).
+    /// Read a PCM WAV file (8 or 16 bits, any number of channels, combined
+    /// into one by [`Wav::from_channels`]).
     pub fn parse(bytes: &[u8]) -> Result<Wav, String> {
         if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
             return Err("not a WAV file".into());
@@ -110,11 +154,65 @@ impl Wav {
             16 => 2,
             _ => return Err(format!("{bits}-bit WAV files aren't supported")),
         };
-        let samples = data
-            .chunks_exact(width * channels)
-            .map(|frame| frame.chunks_exact(width).map(sample).sum::<f32>() / channels as f32)
+        let mut split = vec![Vec::with_capacity(data.len() / (width * channels)); channels];
+        for frame in data.chunks_exact(width * channels) {
+            for (ch, s) in split.iter_mut().zip(frame.chunks_exact(width)) {
+                ch.push(sample(s));
+            }
+        }
+        Ok(Wav::from_channels(rate, split))
+    }
+
+    /// Combine the channels of a tape recording into one. A cassette's
+    /// track is mono, but a stereo head reads it twice, and the two copies
+    /// are often a little apart in time (the head's azimuth: 0.05 ms on
+    /// some of the archive's recordings, 2 samples at 44.1 kHz). Averaged as
+    /// they are, every edge blurs; so each channel is first moved into line
+    /// with the strongest one, by the lag (up to 1 ms) where they correlate
+    /// best, and turned over if it is inverted. A channel that doesn't
+    /// follow the strongest (silent, or a different track) is left out.
+    pub fn from_channels(rate: u32, mut channels: Vec<Vec<f32>>) -> Wav {
+        channels.retain(|c| !c.is_empty());
+        let Some(strongest) = (0..channels.len())
+            .max_by(|&a, &b| spread(&channels[a]).total_cmp(&spread(&channels[b])))
+        else {
+            return Wav {
+                rate,
+                samples: Vec::new(),
+            };
+        };
+        let reference = &channels[strongest];
+        let max_lag = (rate / 1000).max(1) as isize;
+        // (channel, lag, sign) of each channel that follows the reference.
+        let used: Vec<(&Vec<f32>, isize, f32)> = channels
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| {
+                if i == strongest {
+                    return Some((c, 0, 1.0));
+                }
+                let (lag, r) = best_lag(reference, c, max_lag);
+                (r.abs() >= 0.5).then_some((c, lag, r.signum()))
+            })
             .collect();
-        Ok(Wav { rate, samples })
+        let samples = (0..reference.len() as isize)
+            .map(|i| {
+                let (sum, n) =
+                    used.iter()
+                        .fold(
+                            (0.0, 0),
+                            |(sum, n), (c, lag, sign)| match usize::try_from(i + lag)
+                                .ok()
+                                .and_then(|j| c.get(j))
+                            {
+                                Some(s) => (sum + s * sign, n + 1),
+                                None => (sum, n),
+                            },
+                        );
+                sum / n.max(1) as f32
+            })
+            .collect();
+        Wav { rate, samples }
     }
 
     /// Encode as a 16-bit mono PCM WAV file.
@@ -143,6 +241,56 @@ impl Wav {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tape-like square wave with pulses of 8 and 16 samples, from a
+    /// fixed pseudo-random bit pattern.
+    fn tape_like(n: usize) -> Vec<f32> {
+        let mut out = Vec::with_capacity(n);
+        let (mut seed, mut level) = (12345u32, 0.5f32);
+        while out.len() < n {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            let width = if seed >> 16 & 1 == 0 { 8 } else { 16 };
+            out.extend(std::iter::repeat_n(level, width));
+            level = -level;
+        }
+        out.truncate(n);
+        out
+    }
+
+    #[test]
+    fn channels_are_lined_up_before_mixing() {
+        let left = tape_like(100_000);
+        // The right channel is the same track 2 samples later, quieter.
+        let right: Vec<f32> = [0.0, 0.0]
+            .iter()
+            .chain(&left[..left.len() - 2])
+            .map(|s| s * 0.8)
+            .collect();
+        assert_eq!(best_lag(&left, &right, 44).0, 2);
+        let wav = Wav::from_channels(44_100, vec![left.clone(), right]);
+        // Lined up, the mix has the same edges as the left channel: each
+        // sample has the left one's sign.
+        let same = wav
+            .samples
+            .iter()
+            .zip(&left)
+            .skip(10)
+            .filter(|(m, l)| m.signum() == l.signum())
+            .count();
+        assert_eq!(same, left.len() - 10);
+
+        // An inverted channel is turned over to match the strongest; a
+        // silent one is left out.
+        let inverted: Vec<f32> = left.iter().map(|s| -0.5 * s).collect();
+        let wav = Wav::from_channels(44_100, vec![left.clone(), inverted]);
+        let expected: Vec<f32> = left.iter().map(|s| 0.75 * s).collect();
+        assert_eq!(wav.samples, expected);
+        let wav = Wav::from_channels(44_100, vec![vec![0.0; left.len()], left.clone()]);
+        assert_eq!(wav.samples, left);
+        // One channel, or none, passes through.
+        assert_eq!(Wav::from_channels(8000, vec![left.clone()]).samples, left);
+        assert!(Wav::from_channels(8000, vec![]).samples.is_empty());
+    }
 
     #[test]
     fn box_filter_and_dc_blocker() {

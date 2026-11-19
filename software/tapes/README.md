@@ -3,9 +3,9 @@
 Real cassette recordings, kept for work on damaged tapes (issue #8).
 The `survey-*.mp3` files are the first 1.2 MB of each original MP3, enough
 for the first few files; `t3-005.mp3` is whole. Each `.txt` is the list of
-programs on that cassette, as published with it. Convert an MP3 to WAV
-(for example `ffmpeg -i survey-4.mp3 survey-4.wav`) for `--tape` or
-`--wav2bin`.
+programs on that cassette, as published with it. `bk` reads them as they
+are: `bk --bk0010 --tape software/tapes/survey-4.mp3`, or `--wav2bin` to
+list what the ROM finds.
 
 `CIRCUS.BIN.tap` is a tape image in another emulator's format, which `bk`
 does not read. `../tape_komplekt17_start.wav` (the start of set 17, in

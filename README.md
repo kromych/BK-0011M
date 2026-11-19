@@ -36,9 +36,10 @@ homebrew, on the BK-0011M and the BK-0010.01.
 - **Joystick** on the parallel port, from the numeric keypad or a gamepad,
   or a **printer** there that writes to a text file; the BK-0010's
   **serial line**, to and from files.
-- **Tape**: real recordings (`.wav`) load through the ROM, everything the BK
-  writes can be recorded, "fast tape" reads and writes `.bin` files on the
-  host instead, and `.bin` files convert to and from recordings.
+- **Tape**: real recordings (`.wav` or `.mp3`) load through the ROM,
+  everything the BK writes can be recorded, "fast tape" reads and writes
+  `.bin` files on the host instead, and `.bin` files convert to and from
+  recordings.
 - **Disks**: the floppy controller on both models at the level of raw
   tracks (with the BK-0010's extra 16 KB of RAM), up to four 800 KB disk
   images; operating systems such as ANDOS boot.

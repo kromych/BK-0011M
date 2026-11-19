@@ -160,7 +160,7 @@ Emulator commands use Alt (or Cmd on a Mac) so they never reach the BK:
 
 | Keys | Does |
 |---|---|
-| Alt+O | open a file: a `.bin` program is loaded and started (and its directory becomes the fast-tape directory, as with `--load`), a `.wav` goes in the tape recorder, a disk image in drive 0, a `.state` is restored |
+| Alt+O | open a file: a `.bin` program is loaded and started (and its directory becomes the fast-tape directory, as with `--load`), a `.wav` or `.mp3` goes in the tape recorder, a disk image in drive 0, a `.state` is restored |
 | Alt+S | save the machine state (see [Save states](#save-states)) |
 | Alt+L | load the saved state |
 | Alt+D | stop in the debugger (see [The debugger](#the-debugger)) |
@@ -281,21 +281,34 @@ bk --bk0010 --load software/DIGTIT_1.6.BIN     # loads DIGGER_1.6.BIN itself
 Saving works the same way: a program that writes a file named `GAME` creates
 `DIR/GAME.bin`.
 
-### Real tapes (`.wav`)
+### Real tapes (`.wav`, `.mp3`)
 
 ```sh
 bk --bk0010 --tape recording.wav
+bk --bk0010 --tape software/tapes/survey-4.mp3
 ```
 
 The recording plays while the BK runs the tape motor (the emulator runs as
 fast as it can meanwhile, so a long load takes seconds, not minutes; the
 window title says "fast-forward"), and the ROM decodes it exactly as it
 would a cassette, so you start the load from the BK (for example with the
-monitor's `M` command, see [monitor.md](monitor.md)). The WAV can be 8 or
+monitor's `M` command, see [monitor.md](monitor.md)). A WAV can be 8 or
 16 bits, any rate, mono or stereo. Programs in the standard
 BK format load; the emulator squares up noisy recordings, but cassettes with
 dropouts fail the ROM's checksum, as they would on a real machine. Turbo
 loaders that use their own format and speed need their own loader program.
+
+Many archived tapes are MP3s, which load directly. The data is in the
+timing of the pulses, and MP3 keeps it at the usual bitrates: a tape made
+with `--bin2wav` and passed through MP3 at 128 kbit/s or more reads back
+with every edge in place, while at 64 kbit/s a few glitches break the
+checksum and at 32 kbit/s nothing loads.
+
+Stereo recordings are two readings of the same mono track, and on many
+the two are slightly apart in time (the tape head's alignment; 0.05 ms on
+some of the archive's). The emulator lines the channels up before it
+combines them; averaged as they were, the blurred edges can stop a file
+loading at all.
 
 `--record FILE.wav` records everything the BK writes to tape while the motor
 runs (again at full speed) and saves it when you quit. Such recordings load
@@ -306,7 +319,7 @@ BK.
 
 ```sh
 bk --bin2wav game.bin game.wav [--tape-name NAME]
-bk --wav2bin tape.wav DIR
+bk --wav2bin tape.wav DIR          # or tape.mp3
 ```
 
 `--bin2wav` writes a `.bin` file as a recording in the standard BK tape

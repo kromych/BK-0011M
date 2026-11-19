@@ -36,8 +36,8 @@ usage: bk [options]
                      address, or 1000 if that's lower)
   --files DIR        fast tape: when a program loads or saves a named file,
                      use .bin files in DIR (default: the directory of --load)
-  --tape FILE.wav    put a recorded tape in the recorder; it plays while the
-                     BK runs the tape motor
+  --tape FILE        put a recorded tape (.wav or .mp3) in the recorder; it
+                     plays while the BK runs the tape motor
   --record FILE.wav  record what the BK writes to tape, saved on exit
   --ay               an AY-3-8910 sound chip on the parallel port
   --covox            a Covox (8-bit DAC) on the parallel port
@@ -64,9 +64,9 @@ usage: bk [options]
                      format, for a real BK or --tape, and exit
   --tape-name NAME   the name on the tape for --bin2wav (default: the file
                      name, without .bin, up to 16 characters)
-  --wav2bin FILE.wav DIR
-                     read every file on a tape recording through the BK-0010
-                     monitor ROM, write each to DIR/NAME.bin, and exit
+  --wav2bin FILE DIR read every file on a tape recording (.wav or .mp3)
+                     through the BK-0010 monitor ROM, write each to
+                     DIR/NAME.bin, and exit
   --symbols FILE     names for the debugger (NAME = ADDR lines, as the
                      assembler writes with a 4th argument); the ROMs' names
                      come from ./annotations if it is there. Repeatable
@@ -89,9 +89,9 @@ on a US keyboard; left Ctrl = АР2, right Ctrl = СУ; Home = ЛАТ, End = Р�
 F4 |<==, F5 |==>, F6 ИНД СУ, F7 БЛОК РЕД, F8 ШАГ, F9 СБР.
 
 Emulator commands (Cmd also works on a Mac): Alt+O opens a file (a .bin
-program is loaded and started, a .wav goes in the tape recorder, a disk
-image in drive 0, a .state is restored), Alt+S saves the state, Alt+L
-loads it, Alt+D stops in the debugger, Alt+V types the text on the
+program is loaded and started, a .wav or .mp3 goes in the tape recorder,
+a disk image in drive 0, a .state is restored), Alt+S saves the state,
+Alt+L loads it, Alt+D stops in the debugger, Alt+V types the text on the
 clipboard into the BK, Alt+F switches fast-forward on and off, Alt+M
 switches between the color and mono monitors (programs using 512-dot mode
 look right only in mono). The emulator also runs fast by itself while the
@@ -284,8 +284,7 @@ fn bin2wav(from: &Path, to: &Path, name: Option<&str>) -> Result<(), String> {
 fn wav2bin(roms_dir: &Path, from: &Path, dir: &Path) -> Result<(), String> {
     let roms = Roms::load_bk0010(roms_dir, Bk0010Rom::Basic)
         .map_err(|e| format!("can't load the BK-0010 ROMs: {e}"))?;
-    let bytes = std::fs::read(from).map_err(|e| format!("{}: {e}", from.display()))?;
-    let wav = Wav::parse(&bytes).map_err(|e| format!("{}: {e}", from.display()))?;
+    let wav = read_recording(from)?;
     let files = bk::read_tape_files(roms, TapeSignal::from_wav(&wav))?;
     if files.is_empty() {
         return Err(format!("{}: no files found", from.display()));
@@ -497,8 +496,7 @@ fn set_up_tape(machine: &mut Machine, options: &Options) -> Result<(), String> {
         machine.set_tape_files(Some(Box::new(DirFiles { dir })));
     }
     if let Some(path) = &options.tape {
-        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let wav = Wav::parse(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        let wav = read_recording(path)?;
         machine.insert_tape(Some(TapeSignal::from_wav(&wav)));
     }
     if options.record.is_some() {
@@ -739,13 +737,94 @@ fn gamepad_lines(gilrs: &mut gilrs::Gilrs) -> u8 {
 /// in drive 0 (the one there written back first), a state is restored.
 fn open_file(machine: &mut Machine, disks: &mut Vec<PathBuf>) -> Result<(), String> {
     let Some(path) = rfd::FileDialog::new()
-        .add_filter("BK files", &["bin", "wav", "dsk", "img", "bkd", "state"])
+        .add_filter(
+            "BK files",
+            &["bin", "wav", "mp3", "dsk", "img", "bkd", "state"],
+        )
         .add_filter("All files", &["*"])
         .pick_file()
     else {
         return Ok(());
     };
     open_path(machine, &path, disks)
+}
+
+/// Read a tape recording: a PCM WAV file or an MP3 (many archived BK
+/// tapes are MP3s; at 128 kbit/s and up, the pulse edges come through
+/// unmoved). The channels of a stereo recording are lined up and combined
+/// ([`Wav::from_channels`]).
+fn read_recording(path: &Path) -> Result<Wav, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    parse_recording(bytes).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn parse_recording(bytes: Vec<u8>) -> Result<Wav, String> {
+    if bytes.starts_with(b"RIFF") {
+        return Wav::parse(&bytes);
+    }
+    let (rate, channels) = decode_mp3(bytes)?;
+    Ok(Wav::from_channels(rate, channels))
+}
+
+/// Decode an MP3 into its sample rate and channels. A file cut short ends
+/// where it ends, and damaged frames are skipped, as players do.
+fn decode_mp3(bytes: Vec<u8>) -> Result<(u32, Vec<Vec<f32>>), String> {
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::DecoderOptions;
+    use symphonia::core::errors::Error;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+
+    let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
+    let mut hint = Hint::new();
+    hint.with_extension("mp3");
+    let mut format = symphonia::default::get_probe()
+        .format(
+            &hint,
+            stream,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .map_err(|_| "not a WAV or MP3 file")?
+        .format;
+    let track = format.default_track().ok_or("no audio in the file")?;
+    let (id, params) = (track.id, track.codec_params.clone());
+    let rate = params.sample_rate.ok_or("the MP3 has no sample rate")?;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&params, &DecoderOptions::default())
+        .map_err(|e| e.to_string())?;
+    let mut channels: Vec<Vec<f32>> = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(Error::IoError(_)) => break,
+            Err(e) => return Err(e.to_string()),
+        };
+        if packet.track_id() != id {
+            continue;
+        }
+        let decoded = match decoder.decode(&packet) {
+            Ok(decoded) => decoded,
+            Err(Error::DecodeError(_)) => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        let spec = *decoded.spec();
+        let n = spec.channels.count().max(1);
+        let mut samples = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+        samples.copy_interleaved_ref(decoded);
+        channels.resize(channels.len().max(n), Vec::new());
+        for frame in samples.samples().chunks_exact(n) {
+            for (ch, &s) in channels.iter_mut().zip(frame) {
+                ch.push(s);
+            }
+        }
+    }
+    if channels.iter().all(Vec::is_empty) {
+        return Err("no audio in the MP3".into());
+    }
+    Ok((rate, channels))
 }
 
 /// Use a file by its type, as [`open_file`] does.
@@ -774,8 +853,8 @@ fn open_path(machine: &mut Machine, path: &Path, disks: &mut Vec<PathBuf>) -> Re
                 bin.address
             );
         }
-        "wav" => {
-            let wav = Wav::parse(&read()?).map_err(|e| format!("{shown}: {e}"))?;
+        "wav" | "mp3" => {
+            let wav = read_recording(path)?;
             machine.insert_tape(Some(TapeSignal::from_wav(&wav)));
             eprintln!("tape {shown} in the recorder");
         }
@@ -1221,6 +1300,49 @@ mod tests {
 
     fn roms_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../roms")
+    }
+
+    fn here(path: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
+    }
+
+    /// An MP3 tape (stereo, 128 kbit/s, the right channel 2 samples late)
+    /// reads back exactly through the ROM.
+    #[test]
+    fn mp3_tapes_read_back_exactly() {
+        let Ok(roms) = Roms::load_bk0010(&roms_dir(), Bk0010Rom::Basic) else {
+            eprintln!("skipping: no ROMs");
+            return;
+        };
+        let wav = read_recording(&here("testdata/hello-stereo.mp3")).unwrap();
+        assert_eq!(wav.rate, 44_100);
+        let files = bk::read_tape_files(roms, TapeSignal::from_wav(&wav)).unwrap();
+        let expected = BinFile::parse(&std::fs::read(here("testdata/hello.bin")).unwrap()).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "HELLO");
+        assert!(files[0].checksum_ok);
+        assert_eq!(files[0].file, expected);
+        assert_eq!(
+            parse_recording(b"not audio".to_vec()).unwrap_err(),
+            "not a WAV or MP3 file"
+        );
+    }
+
+    /// A real cassette from the archive, read by a stereo head whose
+    /// channels are 2 samples apart: averaged as they were, no file was
+    /// found; lined up, the first file's header reads.
+    #[test]
+    fn stereo_channels_lined_up_on_a_real_tape() {
+        let Ok(roms) = Roms::load_bk0010(&roms_dir(), Bk0010Rom::Basic) else {
+            eprintln!("skipping: no ROMs");
+            return;
+        };
+        let Ok(wav) = read_recording(&here("../../software/tapes/survey-4.mp3")) else {
+            eprintln!("skipping: software/tapes/survey-4.mp3 missing");
+            return;
+        };
+        let files = bk::read_tape_files(roms, TapeSignal::from_wav(&wav)).unwrap();
+        assert!(files.iter().any(|f| f.name == "R&O-REKL1"), "{files:?}");
     }
 
     /// Alt+O's file handling: each type of file goes where it should.
