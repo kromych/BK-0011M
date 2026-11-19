@@ -76,7 +76,8 @@ usage: bk [options]
   --frames N         headless: run N frames (default 100), then exit
   --type TEXT        headless: type TEXT after booting (\\n = Enter, \\NNN = key
                      code in octal up to 377, e.g. \\017 for ЛАТ or \\201 for
-                     ПОВТ, \\p = pause for 1 second)
+                     ПОВТ, \\p = pause for 1 second; Russian letters are typed
+                     in РУС mode, switching back to ЛАТ after them)
   --wait N           headless: frames to run after typing (default 50)
   --screenshot FILE  headless: save the screen as PNG when done
   --panel            with --screenshot: include the keyboard panel, as the
@@ -323,7 +324,8 @@ fn wav2bin(roms_dir: &Path, from: &Path, dir: &Path) -> Result<(), String> {
         std::fs::write(&path, f.file.to_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
         let state = if !f.complete {
             format!(
-                " — the recording ends inside it: {} of its {} bytes read",
+                " — {}: {} of its {} bytes read",
+                f.problem.as_deref().unwrap_or("incomplete"),
                 f.file.data.len(),
                 f.length
             )
@@ -581,12 +583,31 @@ const PAUSE: char = '\u{fffe}';
 /// `--type` text: `\n` is Enter and `\NNN` (octal) is any BK key code,
 /// e.g. `\017` for ЛАТ.
 fn unescape(s: &str) -> Result<String, String> {
+    const RUS: char = '\x0e';
+    const LAT: char = '\x0f';
     let mut out = String::new();
+    // Inside a run of Russian letters, typed in РУС mode.
+    let mut russian = false;
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
+        if let Some(code) = bk::russian_key(c) {
+            if !russian {
+                out.push(RUS);
+                russian = true;
+            }
+            out.push(char::from(code));
+            continue;
+        }
+        // Back to ЛАТ when the run ends (spaces don't end it).
+        if russian && c != ' ' {
+            out.push(LAT);
+            russian = false;
+        }
         if c != '\\' {
             if !c.is_ascii() {
-                return Err(format!("can't type {c:?}: only ASCII and \\NNN codes"));
+                return Err(format!(
+                    "can't type {c:?}: only ASCII, Russian letters and \\NNN codes"
+                ));
             }
             out.push(c);
             continue;
@@ -609,6 +630,9 @@ fn unescape(s: &str) -> Result<String, String> {
         let code = u8::from_str_radix(&digits, 8)
             .map_err(|_| format!("bad escape in --type: \\{digits} (codes go up to 377)"))?;
         out.push(char::from(code));
+    }
+    if russian {
+        out.push(LAT);
     }
     Ok(out)
 }
@@ -1237,6 +1261,15 @@ mod tests {
 
     fn roms_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../roms")
+    }
+
+    /// `--type` takes Russian letters: РУС, their KOI-7 codes, then ЛАТ.
+    #[test]
+    fn typed_text_switches_to_russian_and_back() {
+        assert_eq!(unescape("M\\nПЕРЕВАЛ\\n").unwrap(), "M\n\x0eperewal\x0f\n");
+        assert_eq!(unescape("ДВА НЕГРА").unwrap(), "\x0edwa negra\x0f");
+        assert_eq!(unescape("ab").unwrap(), "ab");
+        assert!(unescape("π").is_err());
     }
 
     fn here(path: &str) -> PathBuf {

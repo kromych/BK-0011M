@@ -31,7 +31,7 @@ pub use recording::parse_recording;
 pub use roms::{Bk0010Rom, Model, Roms};
 pub use tape::{DirFiles, MemFiles, TapeFiles, TapeSignal};
 pub use tapeio::{TapeFile, checksum, encode_tape, read_tape_files};
-pub use typist::Typist;
+pub use typist::{Typist, russian_key};
 pub use video::{Monitor, PALETTES, SCREEN_HEIGHT, SCREEN_WIDTH};
 pub use vm1;
 pub use vm1::CpuState;

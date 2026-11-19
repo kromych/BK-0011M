@@ -33,7 +33,10 @@ directly.
 | `survey-12.mp3` | 2 | the loader, twice | `R&O-REKL1`: the loader starts, finds its program cut off, prints `ОШИБКА` and wipes memory |
 | `survey-4.mp3` | 17 | the loader, twice | `R&O-REKL1`: the loader starts, then crashes, its program being past the end of the sample |
 | `survey-6.mp3` | 18 | the loader, as `BARBARIAN` | `BARBARIAN`: as on set 2, `ОШИБКА` |
-| `survey-2.mp3`, `survey-7.mp3`, `survey-11.mp3`, `t3-005.mp3` | — | no file | — |
+| `survey-2.mp3` | — | nothing: the sample is silent for its first 40 seconds | — |
+| `survey-7.mp3` | — | no header, though the signal looks like the others' | — |
+| `survey-11.mp3` | — | no header: a weak, noisy signal | — |
+| `t3-005.mp3` | — | no header, on the BK-0010 or (with `L?`) the BK-0011M: its pulses are about 2.3 times as long as the other recordings', a format neither ROM reads | — |
 
 The loaders fail the ROM's checksum check. On set 2 the checksum word the
 loader carries is the advert program's (022042), not its own. A real BK

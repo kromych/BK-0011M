@@ -479,7 +479,8 @@ fn tape_programs(
         used.push(name.clone());
         let state = if !f.complete {
             format!(
-                ", the recording ends inside it: the first {} of {} bytes",
+                ", {}: the first {} of {} bytes",
+                f.problem.as_deref().unwrap_or("incomplete"),
                 f.file.data.len(),
                 f.length
             )
@@ -494,7 +495,11 @@ fn tape_programs(
             f.file.address,
             f.file.data.len(),
             if !f.complete {
-                format!("cut off ({} bytes in the header)", f.length)
+                format!(
+                    "incomplete ({} bytes in the header): {}",
+                    f.length,
+                    f.problem.as_deref().unwrap_or("")
+                )
             } else if f.checksum_ok {
                 "checksum OK".into()
             } else {

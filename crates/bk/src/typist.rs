@@ -86,9 +86,7 @@ impl Typist {
                 '\t' => (0o040, None),
                 ' '..='?' => (c as u8, None),
                 '@'..='~' => (c as u8, Some(Mode::Lat)),
-                'ё' => (0o105, Some(Mode::Rus)),
-                'Ё' => (0o145, Some(Mode::Rus)),
-                _ => match russian(c) {
+                _ => match russian_key(c) {
                     Some(code) => (code, Some(Mode::Rus)),
                     None => {
                         skipped += 1;
@@ -177,8 +175,14 @@ impl Typist {
     }
 }
 
-/// The KOI-7 code of a Russian letter (typed in РУС mode).
-fn russian(c: char) -> Option<u8> {
+/// The key code of a Russian letter: its KOI-7 code, typed in РУС mode
+/// (ё is typed as е).
+pub fn russian_key(c: char) -> Option<u8> {
+    match c {
+        'ё' => return Some(0o105),
+        'Ё' => return Some(0o145),
+        _ => {}
+    }
     let lower = c.to_lowercase().next()?;
     let i = KOI7_RUSSIAN.chars().position(|r| r == lower)? as u8;
     Some(if lower == c { 0o100 + i } else { 0o140 + i })

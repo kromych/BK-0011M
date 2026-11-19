@@ -333,9 +333,12 @@ would, and writes each to `DIR/NAME.bin` (the name without its spaces; a
 second copy of the same name, which tapes often carry, becomes
 `NAME~2.bin`). It reports each file's name, address and
 length, and whether the ROM accepted the checksum; a file that failed is
-still written, as the ROM read it. A file the recording ends inside is
-written as far as the ROM got, as `NAME-part.bin`. It needs the BK-0010
-ROMs.
+still written, as the ROM read it. A file it can't read whole (the
+recording ends inside it, the ROM stops reading it, or its header claims
+more than 31744 bytes) is written as far as the ROM got, as
+`NAME-part.bin`, with the reason. Copy-protected tapes typically give a
+loader the ROM reads and then parts in a format of their own. It needs the
+BK-0010 ROMs.
 
 ### Disks
 
@@ -455,7 +458,7 @@ other guides' examples were checked.
 | Option | Effect |
 |---|---|
 | `--frames N` | run N frames (1/50 s each; default 100) first |
-| `--type TEXT` | then type TEXT: `\n` is ВВОД, `\NNN` any key code in octal up to 377 (`\017` ЛАТ, `\016` РУС, `\003` КТ, `\201` ПОВТ, `\211` ТАБ; codes 200 and up go through the function-key vector 274 with their low 7 bits, as АР2 combinations do, so `\261` is АР2+1), `\p` a one-second pause |
+| `--type TEXT` | then type TEXT: `\n` is ВВОД, `\NNN` any key code in octal up to 377 (`\017` ЛАТ, `\016` РУС, `\003` КТ, `\201` ПОВТ, `\211` ТАБ; codes 200 and up go through the function-key vector 274 with their low 7 bits, as АР2 combinations do, so `\261` is АР2+1), `\p` a one-second pause; Russian letters are typed in РУС mode, switching back to ЛАТ after them |
 | `--wait N` | frames to run after typing (default 50) |
 | `--screenshot FILE` | save the screen as a PNG at the end (`--panel`: with the on-screen keyboard under it, as in the window) |
 | `--wav FILE` | save the sound as a WAV file |

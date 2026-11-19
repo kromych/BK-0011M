@@ -125,10 +125,27 @@ pub struct TapeFile {
     pub checksum_ok: bool,
     /// The length in the file's header.
     pub length: u16,
-    /// The ROM read the whole file. False when the recording ends inside
-    /// it: `file.data` then holds the bytes the ROM had read.
+    /// The ROM read the whole file. When false, `file.data` holds the
+    /// bytes the ROM had read, and `problem` says why it stopped.
     pub complete: bool,
+    /// Why an incomplete file wasn't read to its end.
+    pub problem: Option<String>,
 }
+
+/// How a run of the reader program ended.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Run {
+    /// The ROM's tape routine returned.
+    Done,
+    /// The recording ran out first.
+    Ended,
+    /// The tape stood still (the motor off) for [`STALL_FRAMES`]: the ROM
+    /// stopped reading, or what it loaded took the machine over.
+    Stalled,
+}
+
+/// Frames the tape may stand still before a read counts as stalled (5 s).
+const STALL_FRAMES: u32 = 250;
 
 /// Where the reader program sits: the top of the BK-0010's RAM (the last
 /// lines of the screen), out of the way of files loaded at 1000.
@@ -139,8 +156,10 @@ const LOAD_AT: u16 = 0o1000;
 /// Read every file on `tape` through the BK-0010 monitor's tape routine
 /// (EMT 36). `roms` must be a BK-0010 set. Each file is found by asking for
 /// a name no file has (the ROM then reports the name it found), and read
-/// again from its start under that name. Stops at the end of the tape; a
-/// file the recording ends inside comes last, marked incomplete.
+/// again from its start under that name. Stops at the end of the tape. A
+/// file that can't be read whole (the recording ends inside it, the ROM
+/// stops reading it, or it is longer than the reader has room for) comes
+/// back marked incomplete, with the reason.
 pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, String> {
     if roms.model() != Model::Bk0010 {
         return Err("reading a tape needs the BK-0010 ROMs".into());
@@ -180,16 +199,25 @@ pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, St
             m.poke_word(name + 2 * i as u16, u16::from_le_bytes([pair[0], pair[1]]));
         }
     };
-    // Run the reader; false if the tape ran out first.
-    let run = |m: &mut Machine| -> bool {
+    let run = |m: &mut Machine| -> Run {
         m.start_at(start);
+        let (mut last, mut still) = (m.tape_position(), 0);
         loop {
             m.run_frame();
             if m.cpu().pc() == done {
-                return true;
+                return Run::Done;
             }
             if m.tape_ended() {
-                return false;
+                return Run::Ended;
+            }
+            let at = m.tape_position();
+            if at == last {
+                still += 1;
+                if still >= STALL_FRAMES {
+                    return Run::Stalled;
+                }
+            } else {
+                (last, still) = (at, 0);
             }
         }
     };
@@ -198,19 +226,35 @@ pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, St
             .map(|i| (m.peek_word((addr + i) & !1).unwrap_or(0) >> (8 * ((addr + i) & 1))) as u8)
             .collect()
     };
+    // Where the last stall left the tape, so a stall that recurs in the
+    // same place ends the reading instead of repeating forever.
+    let mut stalled_at = None;
     loop {
         // Find the next file: a name that can't be on tape makes the ROM
         // stop after the header with result 1 and the found name in FOUND.
         let before = m.tape_position().unwrap_or(0);
         set_name(&mut m, &[0o377; 16]);
-        if !run(&mut m) {
-            break;
+        match run(&mut m) {
+            Run::Done => {}
+            Run::Ended => break,
+            Run::Stalled => {
+                // Look on from where the tape stopped.
+                let at = m.tape_position();
+                if stalled_at == Some(at) {
+                    break;
+                }
+                stalled_at = Some(at);
+                continue;
+            }
         }
         let result = m.peek_word(blk).unwrap_or(0) >> 8;
         if result != 1 {
-            return Err(format!(
-                "the tape routine failed while looking for a file (result {result})"
-            ));
+            // Not a header the ROM could take: look on from here, if the
+            // tape moved at all.
+            if m.tape_position().unwrap_or(0) == before {
+                break;
+            }
+            continue;
         }
         let found_name: [u8; 16] = bytes_at(&m, found, 16).try_into().unwrap();
         let address = m.peek_word(info).unwrap_or(0);
@@ -220,37 +264,54 @@ pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, St
             .map(|&b| vm1::koi8::decode(b).unwrap_or('?'))
             .collect();
         let text = text.trim_end().to_string();
+        let after_header = m.tape_position().unwrap_or(0);
+        let incomplete = |data: Vec<u8>, problem: String| TapeFile {
+            name: text.clone(),
+            file: BinFile { address, data },
+            checksum_ok: false,
+            length: len,
+            complete: false,
+            problem: Some(problem),
+        };
         if u32::from(LOAD_AT) + u32::from(len) > u32::from(PROGRAM) {
-            return Err(format!(
-                "{text}: {len} bytes is too long to read (at most {})",
-                PROGRAM - LOAD_AT
+            files.push(incomplete(
+                Vec::new(),
+                format!(
+                    "its header says {len} bytes, more than the reader has room for ({})",
+                    PROGRAM - LOAD_AT
+                ),
             ));
+            continue;
         }
         // Back to the start of that file and read it for real.
-        let after_header = m.tape_position().unwrap_or(0);
         m.seek_tape(before);
         set_name(&mut m, &found_name);
-        if !run(&mut m) {
-            // The recording ends inside the file. The ROM was shifting bits
-            // into the byte at R1, so the bytes before it are whole (unless
-            // it was still in the header or the checksum).
+        let outcome = run(&mut m);
+        if outcome != Run::Done {
+            // The ROM was shifting bits into the byte at R1, so the bytes
+            // before it are whole (unless it was still in the header or the
+            // checksum).
             let at = m.cpu().r[1];
             let got = if (LOAD_AT..=LOAD_AT.saturating_add(len)).contains(&at) {
                 at - LOAD_AT
             } else {
                 0
             };
-            files.push(TapeFile {
-                name: text,
-                file: BinFile {
-                    address,
-                    data: bytes_at(&m, LOAD_AT, got),
-                },
-                checksum_ok: false,
-                length: len,
-                complete: false,
-            });
-            break;
+            let data = bytes_at(&m, LOAD_AT, got);
+            if outcome == Run::Ended {
+                files.push(incomplete(data, "the recording ends inside it".into()));
+                break;
+            }
+            files.push(incomplete(
+                data,
+                "the ROM stopped reading it (the tape stood still): a format of its own, or damage"
+                    .into(),
+            ));
+            // Look on from where the tape stopped, or past the header.
+            if m.tape_position().unwrap_or(0) <= after_header {
+                m.seek_tape(after_header);
+            }
+            continue;
         }
         let result = m.peek_word(blk).unwrap_or(0) >> 8;
         if result != 0 && result != 2 {
@@ -268,6 +329,7 @@ pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, St
             checksum_ok: result == 0,
             length: len,
             complete: true,
+            problem: None,
         });
     }
     Ok(files)
