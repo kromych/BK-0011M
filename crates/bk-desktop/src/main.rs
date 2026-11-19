@@ -966,7 +966,9 @@ fn picture(machine: &Machine, panel: Option<(&str, bool)>) -> Vec<u32> {
             tape_moving: machine.tape_busy(),
             disk: fdd.then(|| machine.disk_motor_on()),
             debugger: false,
-            fast: false,
+            // As the window lights it: the tape moves, not heard, so the
+            // emulator runs fast.
+            fast: machine.tape_busy() && !machine.tape_sound(),
             model,
         };
         let held = machine.held_keys();

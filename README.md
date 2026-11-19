@@ -13,12 +13,26 @@ and system programming ([docs/](docs/README.md)).
 
 <p align="center">
   <img src="docs/images/basic.png" width="32%" alt="BK-0011M BASIC running a short program, with the keyboard panel">
+  <img src="docs/images/tape-load.png" width="32%" alt="Robocop loading from its tape on the BK-0010.01: the tape light, the tape time 2:26 of 5:08, the fast-forward light and the progress bar over the keys">
+  <img src="docs/images/disk.png" width="32%" alt="ANDOS's file manager reading a disk on the BK-0011M, the disk light on">
+</p>
+
+BASIC on the BK-0011M; Robocop (Smash corp., 1992), a copy-protected
+game, loading from its tape on the BK-0010.01, with the МАГНИТОФОН light,
+the time played, the bar over the keys and УСКОРЕНИЕ (fast-forwarding);
+ANDOS's file manager reading a disk, with the ДИСК light.
+
+<p align="center">
+  <a href="docs/images/indiana-jones.mp4"><img src="docs/images/indiana-jones.png" width="32%" alt="Indiana Jones' intro on the BK-0010.01: click for the video"></a>
   <img src="docs/images/boingball.png" width="32%" alt="Boing Ball on the BK-0011M">
   <img src="docs/images/pong.png" width="32%" alt="PONG Charged on the BK-0010.01">
 </p>
 
-BASIC on the BK-0011M; [Boing Ball](https://github.com/Manwe-SandS/BoingBall)
-and [PONG Charged](https://github.com/Manwe-SandS/PONG-Charged), MIT-licensed
+▶ [Video](docs/images/indiana-jones.mp4) (MP4, 1:45): Indiana Jones (Smash
+corp., 1991) loading from its tape, heard as the cassette recorder played
+it, then its intro with music, recorded with `bk --video`.
+[Boing Ball](https://github.com/Manwe-SandS/BoingBall) and
+[PONG Charged](https://github.com/Manwe-SandS/PONG-Charged), MIT-licensed
 homebrew, on the BK-0011M and the BK-0010.01.
 
 ## What this project adds
