@@ -1,6 +1,6 @@
 [package]
 name = "vm1"
-version = "0.1.0"
+version = "0.2.0"
 description = "K1801VM1 (PDP-11 subset) CPU core for the BK-0011M emulator"
 edition.workspace = true
 license.workspace = true

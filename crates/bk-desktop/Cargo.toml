@@ -1,6 +1,6 @@
 [package]
 name = "bk-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desktop front end for the BK-0011M emulator"
 edition.workspace = true
 license.workspace = true

@@ -145,7 +145,7 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "bk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "symphonia",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "bk-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "bk",
@@ -1620,7 +1620,7 @@ dependencies = [
 
 [[package]]
 name = "romdis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bk",
  "vm1",
@@ -2094,7 +2094,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vm1"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flate2",
 ]
