@@ -371,6 +371,30 @@ impl Machine {
     /// Put a tape in the recorder; it plays while the BK runs the motor.
     pub fn insert_tape(&mut self, tape: Option<TapeSignal>) {
         self.board.tape_in = tape;
+        self.board.tape_rolling = false;
+    }
+
+    /// Whether the recorder is wired to the BK's motor relay (yes at
+    /// first). Without it, once the BK first runs the motor the tape plays
+    /// on to its end, as on a recorder started by hand: some protected
+    /// tapes stop the motor in the middle of a load and expect that.
+    pub fn set_motor_control(&mut self, on: bool) {
+        self.board.motor_control = on;
+    }
+
+    pub fn motor_control(&self) -> bool {
+        self.board.motor_control
+    }
+
+    /// Invert the recording's signal on its way in (off at first). The
+    /// ROM measures a recording's polarity and reads either; some
+    /// protected loaders assume one.
+    pub fn set_tape_invert(&mut self, on: bool) {
+        self.board.tape_invert = on;
+    }
+
+    pub fn tape_invert(&self) -> bool {
+        self.board.tape_invert
     }
 
     /// Play the tape being read through the sound as well (off at first),
@@ -663,7 +687,9 @@ impl Machine {
     /// The tape is moving with something to play or record: the motor runs
     /// and a recording is inserted that hasn't run out, or recording is on.
     pub fn tape_busy(&self) -> bool {
-        self.board.motor_on() && (self.board.recording.is_some() || !self.tape_ended())
+        let moving =
+            self.board.motor_on() || (!self.board.motor_control && self.board.tape_rolling);
+        (self.board.motor_on() && self.board.recording.is_some()) || (moving && !self.tape_ended())
     }
 
     // ----- fast tape -----

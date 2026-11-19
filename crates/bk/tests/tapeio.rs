@@ -87,3 +87,26 @@ fn a_recording_cut_inside_a_file_keeps_what_was_read() {
     assert!(n > 500 && n < 2000, "{n} bytes read");
     assert_eq!(cut.file.data[..], b.data[..n], "the bytes read are right");
 }
+
+/// A recording that ends right after a file's last pulse (Manwe's
+/// Indiana Jones intro stops 20 ms after its checksum) still gives the
+/// file whole: the reader lets the ROM finish after the recording ends.
+#[test]
+fn a_file_at_the_very_end_of_a_recording_reads_whole() {
+    let Some(roms) = roms() else { return };
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../software/tapes/protected/Indiana-Jones.wav.gz");
+    let Ok(bytes) = std::fs::read(&path) else {
+        eprintln!("skipping: {} missing", path.display());
+        return;
+    };
+    let wav = bk::parse_recording(bytes).unwrap();
+    let files = read_tape_files(roms, TapeSignal::from_wav(&wav)).unwrap();
+    assert_eq!(files.len(), 1);
+    let f = &files[0];
+    assert_eq!(
+        (f.name.as_str(), f.file.data.len()),
+        ("INDIANA JONES", 15014)
+    );
+    assert!(f.complete && f.checksum_ok, "{:?}", f.problem);
+}

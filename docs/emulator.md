@@ -89,6 +89,8 @@ Hardware options:
 | `--irq2-50hz` | BK-0010: a 50 Hz interrupt on vector 100, once a program has set the vector (for FOCAL's `FCLK()`, see [focal.md](focal.md#fclk)) |
 | `--mute` | no sound |
 | `--tape-sound` | hear the tape being read, as from the cassette recorder's speaker; the tape then plays at its real speed. In the window, Alt+T (Cmd+T) switches it |
+| `--no-motor-control` | a recorder not wired to the BK's motor relay: once the BK first runs the motor, the tape plays to its end whatever the BK does. Several protected tapes stop the motor in the middle of a load and need this. Alt+R (Cmd+R) switches it |
+| `--invert-tape` | invert the recording's signal. The ROM reads either polarity; some protected loaders read only one. Alt+I (Cmd+I) switches it |
 
 The color/mono switch matters: the BK has one video mode of 512 × 256 dots
 in black and white or 256 × 256 in four colors, and the same screen memory
@@ -175,6 +177,8 @@ Emulator commands use Alt (or Cmd on a Mac) so they never reach the BK:
 | Alt+F | fast-forward on or off: run as fast as the PC allows, without sound (it also runs fast by itself while the tape moves with a recording to play or record, unless the tape sound is on) |
 | Alt+M | switch between the color and the mono monitor |
 | Alt+T | tape sound on or off: hear the tape being read, at its real speed |
+| Alt+R | the recorder's motor control on or off (`--no-motor-control`) |
+| Alt+I | invert the tape signal or not (`--invert-tape`) |
 
 On macOS, F10 and F11 are usually taken by the system, which is why РУС and
 ЛАТ are also on End and Home.

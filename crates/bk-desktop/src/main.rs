@@ -53,6 +53,11 @@ usage: bk [options]
   --mute             no sound
   --tape-sound       hear the tape being read, as from the cassette recorder;
                      it then plays at its real speed (Alt+T switches)
+  --no-motor-control the recorder isn't wired to the BK's motor relay: once
+                     the BK starts the motor, the tape plays to its end, as
+                     some protected tapes need (Alt+R switches)
+  --invert-tape      invert the recording's signal, for loaders that need
+                     the other polarity (Alt+I switches)
   --state FILE       where Alt+S saves the machine state and Alt+L loads it
                      (default: bk0011m.state or bk0010.state)
   --restore FILE     start from a saved state (same model, ROMs and devices)
@@ -97,7 +102,9 @@ a disk image in drive 0, a .state is restored), Alt+S saves the state,
 Alt+L loads it, Alt+D stops in the debugger, Alt+V types the text on the
 clipboard into the BK, Alt+F switches fast-forward on and off, Alt+M
 switches between the color and mono monitors (programs using 512-dot mode
-look right only in mono), Alt+T switches the tape sound on and off. The
+look right only in mono), Alt+T switches the tape sound on and off, Alt+R
+switches the recorder's motor control (see --no-motor-control), Alt+I
+inverts the tape signal (see --invert-tape). The
 emulator also runs fast by itself while the tape moves with a recording to
 play or record, unless the tape sound is on.
 
@@ -127,6 +134,8 @@ struct Options {
     wav: Option<PathBuf>,
     mute: bool,
     tape_sound: bool,
+    no_motor_control: bool,
+    invert_tape: bool,
     wait: u64,
     state: Option<PathBuf>,
     restore: Option<PathBuf>,
@@ -162,6 +171,8 @@ fn parse_args() -> Result<Options, String> {
         wav: None,
         mute: false,
         tape_sound: false,
+        no_motor_control: false,
+        invert_tape: false,
         wait: 50,
         state: None,
         restore: None,
@@ -201,6 +212,8 @@ fn parse_args() -> Result<Options, String> {
             "--wav" => o.wav = Some(value("--wav")?.into()),
             "--mute" => o.mute = true,
             "--tape-sound" => o.tape_sound = true,
+            "--no-motor-control" => o.no_motor_control = true,
+            "--invert-tape" => o.invert_tape = true,
             "--state" => o.state = Some(value("--state")?.into()),
             "--restore" => o.restore = Some(value("--restore")?.into()),
             "--save-state" => o.save_state = Some(value("--save-state")?.into()),
@@ -415,6 +428,8 @@ fn main() {
     });
     let mut machine = Machine::new(roms, options.config);
     machine.set_tape_sound(options.tape_sound);
+    machine.set_motor_control(!options.no_motor_control);
+    machine.set_tape_invert(options.invert_tape);
     if let Some(path) = &options.serial_in {
         match std::fs::read(path) {
             Ok(bytes) => machine.serial_send(&bytes),
@@ -1026,17 +1041,30 @@ fn run_window(
     } else {
         "Alt+V"
     };
-    let title = |m: Monitor, pasting: usize, fast: bool, tape_sound: bool| {
+    let title = |m: Monitor, pasting: usize, fast: bool, machine: &Machine| {
         let monitor = if m == Monitor::Mono { "mono" } else { "color" };
         let fast = if fast { " — fast-forward" } else { "" };
-        let tape = if tape_sound { " — tape sound" } else { "" };
+        // The tape settings that differ from the start.
+        let settings: Vec<&str> = [
+            (machine.tape_sound(), "tape sound"),
+            (!machine.motor_control(), "no motor control"),
+            (machine.tape_invert(), "inverted tape"),
+        ]
+        .into_iter()
+        .filter_map(|(on, name)| on.then_some(name))
+        .collect();
+        let tape = if settings.is_empty() {
+            String::new()
+        } else {
+            format!(" — {}", settings.join(", "))
+        };
         if pasting > 0 {
             format!("{model} ({monitor}){fast}{tape} — pasting, {pasting} keys to go")
         } else {
             format!("{model} ({monitor}){fast}{tape} — {paste_key} pastes text")
         }
     };
-    let mut shown_title = title(machine.monitor(), 0, false, machine.tape_sound());
+    let mut shown_title = title(machine.monitor(), 0, false, machine);
     // Fast-forward: switched by Alt+F, and on by itself while the tape
     // moves with something to play or record, unless the tape is to be
     // heard.
@@ -1117,6 +1145,14 @@ fn run_window(
                     }
                     Key::T => {
                         machine.set_tape_sound(!machine.tape_sound());
+                        Ok(())
+                    }
+                    Key::R => {
+                        machine.set_motor_control(!machine.motor_control());
+                        Ok(())
+                    }
+                    Key::I => {
+                        machine.set_tape_invert(!machine.tape_invert());
                         Ok(())
                     }
                     Key::M => {
@@ -1260,12 +1296,7 @@ fn run_window(
             &|code| held.contains(&code),
             ar2,
         );
-        let wanted = title(
-            machine.monitor(),
-            typist.pending(),
-            fast,
-            machine.tape_sound(),
-        );
+        let wanted = title(machine.monitor(), typist.pending(), fast, machine);
         if wanted != shown_title {
             window.set_title(&wanted);
             shown_title = wanted;

@@ -76,6 +76,17 @@ pub struct Board {
     /// while the motor runs, on the CPU's clock.
     pub tape_in: Option<crate::tape::TapeSignal>,
     pub recording: Option<crate::tape::TapeSignal>,
+    /// The recorder is wired to the BK's motor relay (latch bit 7), as the
+    /// BK's own tape cable has it. Without it the tape, once started, plays
+    /// on whatever the BK does with the relay.
+    pub motor_control: bool,
+    /// Without motor control: the tape has been started (the BK ran the
+    /// motor once since it was put in).
+    pub tape_rolling: bool,
+    /// Invert the recording's signal on its way in: recordings differ in
+    /// polarity, and a loader that doesn't measure it (as the ROM does)
+    /// reads only one of them.
+    pub tape_invert: bool,
     /// BK-0010: the frame pulse is wired to IRQ2, giving a 50 Hz interrupt
     /// on vector 100 as the BK-0011M has.
     pub irq2_50hz: bool,
@@ -156,6 +167,9 @@ impl Board {
             io_wait: IO_WAIT,
             tape_in: None,
             recording: None,
+            motor_control: true,
+            tape_rolling: false,
+            tape_invert: false,
             irq2_50hz: false,
             watch: Vec::new(),
             watch_hit: None,
@@ -188,6 +202,7 @@ impl Board {
         self.watch_hit = None;
         self.clock = 0;
         self.step_start = 0;
+        self.tape_rolling = false;
     }
 
     /// Advance devices by `cycles` CPU clocks.
@@ -219,13 +234,16 @@ impl Board {
         let n = (to - self.clock) as u32;
         self.clock = to;
         self.tick(n);
-        if self.motor_on() {
+        if self.tape_moves() {
             let hz = crate::cpu_hz(self.mem.model());
             if let Some(tape) = &mut self.tape_in
                 && let Some(level) = tape.play(n, hz)
             {
-                self.set_tape_input(level);
+                self.set_tape_input(level != self.tape_invert);
             }
+        }
+        if self.motor_on() {
+            let hz = crate::cpu_hz(self.mem.model());
             let speaker = self.speaker();
             if let Some(rec) = &mut self.recording {
                 rec.record(n, hz, speaker);
@@ -272,6 +290,15 @@ impl Board {
     /// Tape motor: latch bit 7, 0 = running.
     pub fn motor_on(&self) -> bool {
         self.tape_latch & 0o200 == 0
+    }
+
+    /// The tape in the recorder moves: the motor runs, or (without motor
+    /// control) it has been started.
+    pub fn tape_moves(&mut self) -> bool {
+        if self.motor_on() && self.tape_in.is_some() {
+            self.tape_rolling = true;
+        }
+        self.motor_on() || (!self.motor_control && self.tape_rolling)
     }
 
     /// Tape output, as recorded: latch bit 6.
@@ -533,6 +560,7 @@ impl Board {
         w.u32(self.timer_clock);
         // The memory controller's slots run on this clock.
         w.u64(self.clock);
+        w.bool(self.tape_rolling);
         for v in [
             self.sel1,
             self.tape_latch,
@@ -569,6 +597,7 @@ impl Board {
             return Err("save state is corrupt (timer clock)".into());
         }
         self.clock = r.u64()?;
+        self.tape_rolling = r.bool()?;
         for v in [
             &mut self.sel1,
             &mut self.tape_latch,

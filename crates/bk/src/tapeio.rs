@@ -155,6 +155,8 @@ enum Run {
 
 /// Frames the tape may stand still before a read counts as stalled (5 s).
 const STALL_FRAMES: u32 = 250;
+/// How long the reader keeps running after the recording ends (1 s).
+const END_GRACE_FRAMES: u32 = 50;
 
 /// Where the reader program sits: the top of the BK-0010's RAM (the last
 /// lines of the screen), out of the way of files loaded at 1000.
@@ -210,14 +212,20 @@ pub fn read_tape_files(roms: Roms, tape: TapeSignal) -> Result<Vec<TapeFile>, St
     };
     let run = |m: &mut Machine| -> Run {
         m.start_at(start);
-        let (mut last, mut still) = (m.tape_position(), 0);
+        let (mut last, mut still, mut after_end) = (m.tape_position(), 0, 0);
         loop {
             m.run_frame();
             if m.cpu().pc() == done {
                 return Run::Done;
             }
+            // A recording can end just after a file's last pulse: give the
+            // ROM time to finish the bit it is timing and the checksum.
             if m.tape_ended() {
-                return Run::Ended;
+                after_end += 1;
+                if after_end > END_GRACE_FRAMES {
+                    return Run::Ended;
+                }
+                continue;
             }
             let at = m.tape_position();
             if at == last {

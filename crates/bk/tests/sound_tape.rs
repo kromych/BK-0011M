@@ -646,3 +646,83 @@ fn a_protected_tape_loads_through_its_own_loader() {
     let red = screen.iter().filter(|&&p| p == 0xFF0000).count();
     assert!(red > 5000, "title not on screen ({red} red pixels)");
 }
+
+/// Load a recording from software/tapes/protected with the monitor's M and
+/// `name`, run `frames_after` frames, and give the machine, or None when
+/// the recording or the ROMs are missing.
+fn load_protected(
+    file: &str,
+    name: &str,
+    frames_after: usize,
+    set: impl Fn(&mut Machine),
+) -> Option<Machine> {
+    let tape = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../software/tapes/protected")
+        .join(file);
+    let Ok(bytes) = std::fs::read(&tape) else {
+        eprintln!("skipping: {} missing", tape.display());
+        return None;
+    };
+    let mut m = machine_of(Model::Bk0010)?;
+    set(&mut m);
+    frames(&mut m, 150);
+    let wav = bk::parse_recording(bytes).unwrap();
+    m.insert_tape(Some(bk::TapeSignal::from_wav(&wav)));
+    m.type_text("MONIT\n");
+    frames(&mut m, 50);
+    m.type_text(&format!("M\n{name}\n"));
+    frames(&mut m, frames_after);
+    Some(m)
+}
+
+/// Indiana Jones' level 1 loader reads its blocks with a fixed polarity
+/// instead of the one the ROM measures: from Manwe's recording it needs the
+/// signal inverted, and then reaches the game (its menu runs in RAM);
+/// otherwise it crashes back into BASIC's ROM.
+#[test]
+fn indiana_jones_level_1_needs_the_tape_inverted() {
+    for invert in [false, true] {
+        let Some(m) = load_protected("Indiana-Jones-1.wav.gz", "JONES1", 9500, |m| {
+            m.set_tape_invert(invert)
+        }) else {
+            return;
+        };
+        let pc = m.cpu().pc();
+        assert_eq!(pc < 0o100000, invert, "inverted {invert}: PC {pc:06o}");
+    }
+}
+
+/// A recorder without motor control: once the BK has run the motor, the
+/// tape plays on after the BK stops it; with motor control it stops.
+#[test]
+fn without_motor_control_the_tape_plays_on() {
+    let file = BinFile {
+        address: 0o1000,
+        data: vec![0o125; 2000],
+    };
+    for control in [true, false] {
+        let Some((mut m, _)) = run_program(
+            Model::Bk0010,
+            "
+            START:  MOV #20, @#177716   ; motor on
+                    MOV #1000, R0
+            WAIT:   SOB R0, WAIT
+                    MOV #220, @#177716  ; motor off
+            DONE:   BR DONE",
+        ) else {
+            return;
+        };
+        m.set_motor_control(control);
+        m.insert_tape(Some(bk::encode_tape("T", &file).unwrap()));
+        m.start_at(0o1000);
+        frames(&mut m, 100);
+        assert!(!m.tape_motor_on());
+        let (at, _) = m.tape_time().unwrap();
+        if control {
+            assert!(at < 0.1, "the tape stopped with the motor: {at} s");
+        } else {
+            assert!(at > 1.9, "the tape played on: {at} s");
+            assert!(m.tape_busy());
+        }
+    }
+}
