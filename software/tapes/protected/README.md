@@ -323,6 +323,23 @@ an `XOR R3, PC`: altered code jumps astray. The handler draws `RETURNJ.1`,
 an ordinary 9472-byte file, as 426 records of screen columns instead of
 loading it. After the title, the game reads `RETURNJ.2` with the ROM.
 
+## In BKEmu
+
+gid's BKEmu 3.14 for Windows (`software/bkemu`), given the same recordings
+on 2026-11-19: its BK-0010-01 configuration with tape loading through the
+ROM (its "Эмулировать загрузку с магнитофона" off), each recording played
+in real time after the same keys (`MONIT`, `M`, the name), with screenshots
+every 30 seconds until 25 seconds after the recording ends. BKEmu plays a
+recording on whether or not the BK stops the motor, as `bk` does with
+`--no-motor-control`.
+
+| Gets as far as `bk` | Doesn't load |
+|---|---|
+| Bally, Destroyer, Exolon One, Expert, Hobbit, Planet, Runing, Second, Superman, Terminator | Два негра and Ferrari (back to the monitor's `?`), Exolon.RUN, Indiana Jones and its level 1 (`JONES1`), Перевал (the monitor never finds the file), Return of the Jedi (the monitor skips its loader and finds `RETURNJ.1`), Robocop (stays on its information screen), Soldier (nothing) |
+
+One run each, with BKEmu's other settings as it ships; its 4.x betas
+weren't tried.
+
 ## What `bk` doesn't do yet
 
 - **Перевал** (above): a 1 bit as long as the pilot, so its later

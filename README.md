@@ -61,8 +61,9 @@ Features:
 
 - **Tapes as the machine read them**: real recordings go through the ROM
   with the recorder modeled (its motor relay, the signal's polarity, its
-  sound), all 19 protected games load, and `--wav2bin` reads recordings
-  into `.bin` files through the real ROM.
+  sound), and all 19 protected games load (BKEmu 3.14, given the same
+  recordings, [loads 10](software/tapes/protected/README.md#in-bkemu));
+  `--wav2bin` reads recordings into `.bin` files through the real ROM.
 - **Built for testing**: headless runs that type, take screenshots and
   record video with sound; save states; a debugger with the ROM listings'
   symbols; a test suite that plays real games and protected tapes. It runs
