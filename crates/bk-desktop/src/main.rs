@@ -717,6 +717,8 @@ fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Resu
         let lights = panel::Lights {
             power: true,
             tape: machine.tape_motor_on(),
+            tape_time: machine.tape_time(),
+            tape_moving: machine.tape_busy(),
             disk: fdd.then(|| machine.disk_motor_on()),
             debugger: false,
             model,
@@ -1238,6 +1240,8 @@ fn run_window(
         let lights = panel::Lights {
             power: powered,
             tape: powered && machine.tape_motor_on(),
+            tape_time: machine.tape_time(),
+            tape_moving: powered && machine.tape_busy(),
             disk: fdd.then(|| powered && machine.disk_motor_on()),
             debugger: console.stopped,
             model: label,

@@ -637,6 +637,14 @@ impl Machine {
         self.board.tape_in.as_ref().map(TapeSignal::position)
     }
 
+    /// The inserted tape's position and length, in seconds of recording.
+    pub fn tape_time(&self) -> Option<(f64, f64)> {
+        let tape = self.board.tape_in.as_ref()?;
+        let len = tape.len_seconds();
+        let at = tape.position() as f64 / f64::from(self.cpu_hz);
+        Some((at.min(len), len))
+    }
+
     /// Wind the inserted tape to a position from [`Machine::tape_position`].
     pub fn seek_tape(&mut self, clocks: u64) {
         if let Some(tape) = &mut self.board.tape_in {

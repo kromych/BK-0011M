@@ -65,7 +65,12 @@ pub enum Event {
 /// The state shown by the lights.
 pub struct Lights<'a> {
     pub power: bool,
+    /// The BK's tape motor relay.
     pub tape: bool,
+    /// The recording in the recorder: seconds played and its length, and
+    /// whether it is moving (the motor runs and it hasn't ended).
+    pub tape_time: Option<(f64, f64)>,
+    pub tape_moving: bool,
     pub disk: Option<bool>,
     pub debugger: bool,
     pub model: &'a str,
@@ -240,19 +245,44 @@ impl Panel {
         buf.fill(BACKGROUND);
         // Lights: a lamp and its label.
         let mut x = POWER_LIGHT.0;
-        let mut lamp = |buf: &mut [u32], on: bool, color: u32, label: &str| {
+        let lamp = |buf: &mut [u32], x: &mut usize, on: bool, color: u32, label: &str| {
             let c = if on { color } else { dim(color) };
-            fill_rect(buf, w, x, POWER_LIGHT.1, 10, 10, c);
-            font::draw(buf, w, x + 15, POWER_LIGHT.1 + 2, label, LABEL);
-            x += 15 + font::width(label) + 18;
+            fill_rect(buf, w, *x, POWER_LIGHT.1, 10, 10, c);
+            font::draw(buf, w, *x + 15, POWER_LIGHT.1 + 2, label, LABEL);
+            *x += 15 + font::width(label) + 18;
         };
-        lamp(buf, lights.power, 0x40e040, "СЕТЬ");
-        lamp(buf, lights.tape, 0xffb020, "МАГНИТОФОН");
+        lamp(buf, &mut x, lights.power, 0x40e040, "СЕТЬ");
+        lamp(buf, &mut x, lights.tape, TAPE_COLOR, "МАГНИТОФОН");
+        // The recording: how far it has played, and a bar of it over the
+        // keyboard, bright while it moves.
+        if let Some((at, len)) = lights.tape_time {
+            let mmss = |s: f64| {
+                let s = s as u64;
+                format!("{}:{:02}", s / 60, s % 60)
+            };
+            let text = format!("{} / {}", mmss(at), mmss(len));
+            font::draw(buf, w, x - 10, POWER_LIGHT.1 + 2, &text, TAPE_TIME);
+            x += font::width(&text) + 8;
+            let (left, right) = (POWER_LIGHT.0, w - POWER_LIGHT.0);
+            let full = right - left;
+            let done = if len > 0.0 {
+                ((at / len).clamp(0.0, 1.0) * full as f64).round() as usize
+            } else {
+                0
+            };
+            let color = if lights.tape_moving {
+                TAPE_COLOR
+            } else {
+                dim_half(TAPE_COLOR)
+            };
+            fill_rect(buf, w, left, TAPE_BAR_Y, full, 3, TAPE_TRACK);
+            fill_rect(buf, w, left, TAPE_BAR_Y, done, 3, color);
+        }
         if let Some(disk) = lights.disk {
-            lamp(buf, disk, 0xff4040, "ДИСК");
+            lamp(buf, &mut x, disk, 0xff4040, "ДИСК");
         }
         if lights.debugger {
-            lamp(buf, true, 0x40a0ff, "ОТЛАДКА");
+            lamp(buf, &mut x, true, 0x40a0ff, "ОТЛАДКА");
         }
         let model = lights.model;
         font::draw(
@@ -395,6 +425,18 @@ fn label_lines(label: &str, width: usize) -> Vec<&str> {
     }
 }
 
+/// The tape lamp's and bar's color, the bar's track, and its row (between
+/// the lights and the keys).
+const TAPE_COLOR: u32 = 0xffb020;
+const TAPE_TRACK: u32 = 0x404046;
+const TAPE_TIME: u32 = 0xe0c080;
+const TAPE_BAR_Y: usize = 23;
+
+fn dim_half(color: u32) -> u32 {
+    let ch = |shift: u32| ((color >> shift) & 0xff) / 2;
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
 fn dim(color: u32) -> u32 {
     let ch = |shift: u32| ((color >> shift) & 0xff) / 5;
     (ch(16) << 16) | (ch(8) << 8) | ch(0)
@@ -521,6 +563,38 @@ mod tests {
     }
 
     /// `PANEL_PNG=out.png cargo test -p bk-desktop panel_picture` saves a picture.
+    /// The tape bar over the keyboard fills as the recording plays: bright
+    /// while it moves, dim once it has stopped or ended.
+    #[test]
+    fn tape_bar_shows_how_far_the_recording_has_played() {
+        let p = Panel::new(512);
+        let bar = |at: f64, moving: bool| {
+            let mut buf = vec![0; 512 * PANEL_HEIGHT];
+            let lights = Lights {
+                power: true,
+                tape: true,
+                tape_time: Some((at, 60.0)),
+                tape_moving: moving,
+                disk: None,
+                debugger: false,
+                model: "БК-0010.01",
+            };
+            p.draw(&mut buf, &lights, &|_| false, false);
+            buf[TAPE_BAR_Y * 512..(TAPE_BAR_Y + 1) * 512].to_vec()
+        };
+        let quarter = bar(15.0, true);
+        let lit = quarter.iter().filter(|&&c| c == TAPE_COLOR).count();
+        assert_eq!(lit, (512 - 2 * POWER_LIGHT.0) / 4);
+        assert_eq!(quarter[POWER_LIGHT.0], TAPE_COLOR);
+        assert_eq!(quarter[512 - POWER_LIGHT.0 - 1], TAPE_TRACK);
+        let ended = bar(60.0, false);
+        assert!(
+            ended[POWER_LIGHT.0..512 - POWER_LIGHT.0]
+                .iter()
+                .all(|&c| c == dim_half(TAPE_COLOR))
+        );
+    }
+
     #[test]
     fn panel_picture() {
         let Some(path) = std::env::var_os("PANEL_PNG") else {
@@ -532,6 +606,8 @@ mod tests {
         let lights = Lights {
             power: true,
             tape: true,
+            tape_time: Some((32.0, 55.0)),
+            tape_moving: true,
             disk: Some(false),
             debugger: false,
             model: "БК-0011М",

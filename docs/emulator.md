@@ -116,6 +116,12 @@ it.
   it). Clicking the power light switches the machine off; clicking it again
   switches it on again: a cold start, with RAM cleared, exactly like
   starting the emulator.
+- With a recording in the recorder, the time beside МАГНИТОФОН says how
+  far it has played and how long it is, and a thin bar over the keys
+  fills as it plays: bright while the tape moves, dim when it stands or
+  has run out. The light itself is the BK's motor relay: a program can
+  leave the motor on after the recording has ended (waiting for the next
+  one, which Alt+O opens).
 
 By default the BK keyboard is mapped onto a PC keyboard like this (see
 [Remapping keys](#remapping-keys) to change it). Letters, digits and

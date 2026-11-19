@@ -88,7 +88,8 @@ save and load the state, D stops in the debugger, V pastes text, F
 fast-forwards, M switches between the color and mono monitors, T lets you
 hear the tape load (at its real speed). Under the
 screen, a picture of the BK keyboard lights the keys as you type and can be
-clicked, beside lights for power, the tape motor and the disk. An INI file
+clicked, beside lights for power, the tape motor and the disk, and a bar
+showing how far the recording in the recorder has played. An INI file
 remaps the keys (`--keys`, `--write-keys`). `bk --help` lists every option;
 [docs/emulator.md](docs/emulator.md) explains them.
 
