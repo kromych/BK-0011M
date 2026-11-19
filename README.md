@@ -213,7 +213,7 @@ can, for scripts and tests.
 
 | Headless runs | |
 |---|---|
-| `--frames N` | run N frames of 20 ms (default 100), then exit |
+| `--frames N` | run N frames of 20 ms (default 150), then exit; with `--type`, the frames before typing |
 | `--type TEXT` | type TEXT after booting (`\n` Enter, `\NNN` a key code in octal, `\p` a 1-second pause) |
 | `--wait N` | frames to run after typing (default 50) |
 | `--screenshot FILE` | save the screen as PNG when done |

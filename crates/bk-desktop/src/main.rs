@@ -81,7 +81,7 @@ usage: bk [options]
   --debug            start stopped in the debugger, which reads commands
                      from the terminal (h for help). Headless, it runs the
                      commands from stdin after the other options are done
-  --frames N         headless: run N frames (default 100), then exit
+  --frames N         headless: run N frames (default 150), then exit
   --type TEXT        headless: type TEXT after booting (\\n = Enter, \\NNN = key
                      code in octal up to 377, e.g. \\017 for ЛАТ or \\201 for
                      ПОВТ, \\p = pause for 1 second; Russian letters are typed
@@ -675,7 +675,8 @@ fn run_headless(machine: &mut Machine, options: &Options) -> Result<(), String> 
         Some(path) => Some(Recorder::start(path, panel)?),
         None => None,
     };
-    run_frames(machine, options.frames.unwrap_or(100), &mut recorder)?;
+    // 3 seconds: BK-0011M BASIC drops a key typed before about 2.4.
+    run_frames(machine, options.frames.unwrap_or(150), &mut recorder)?;
     if let Some(text) = &options.text {
         for (i, part) in text.split(PAUSE).enumerate() {
             if i > 0 {
