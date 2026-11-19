@@ -114,8 +114,9 @@ it.
   other case, or the symbol on the key's other half) latch: click one, then
   the key it should apply to. СТОП interrupts the processor, as on the BK.
 - The lights show power (СЕТЬ), the tape motor (МАГНИТОФОН), the floppy
-  motor (ДИСК, with `--fdd`) and the debugger (ОТЛАДКА, while stopped in
-  it). Clicking the power light switches the machine off; clicking it again
+  motor (ДИСК, with `--fdd`), the debugger (ОТЛАДКА, while stopped in
+  it) and fast-forward (УСКОРЕНИЕ: no sound, and the BK as fast as the PC
+  goes, until Alt+F switches it off or the tape stops). Clicking the power light switches the machine off; clicking it again
   switches it on again: a cold start, with RAM cleared, exactly like
   starting the emulator.
 - With a recording in the recorder, the time beside МАГНИТОФОН says how
@@ -174,7 +175,7 @@ Emulator commands use Alt (or Cmd on a Mac) so they never reach the BK:
 | Alt+L | load the saved state |
 | Alt+D | stop in the debugger (see [The debugger](#the-debugger)) |
 | Alt+V | type the text on the clipboard into the BK |
-| Alt+F | fast-forward on or off: run as fast as the PC allows, without sound (it also runs fast by itself while the tape moves with a recording to play or record, unless the tape sound is on) |
+| Alt+F | fast-forward on or off: run as fast as the PC allows, without sound, until switched off again; the УСКОРЕНИЕ light shows it (it also runs fast by itself while the tape moves with a recording to play or record, unless the tape sound is on) |
 | Alt+M | switch between the color and the mono monitor |
 | Alt+T | tape sound on or off: hear the tape being read, at its real speed |
 | Alt+R | the recorder's motor control on or off (`--no-motor-control`) |

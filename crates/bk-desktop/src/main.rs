@@ -812,6 +812,7 @@ fn save_png(machine: &Machine, path: &Path, panel: Option<(&str, bool)>) -> Resu
             tape_moving: machine.tape_busy(),
             disk: fdd.then(|| machine.disk_motor_on()),
             debugger: false,
+            fast: false,
             model,
         };
         panel::Panel::new(SCREEN_WIDTH).draw(&mut small, &lights, &|_| false, false);
@@ -1388,6 +1389,7 @@ fn run_window(
             tape_moving: powered && machine.tape_busy(),
             disk: fdd.then(|| powered && machine.disk_motor_on()),
             debugger: console.stopped,
+            fast,
             model: label,
         };
         let now = std::time::Instant::now();

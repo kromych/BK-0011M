@@ -73,6 +73,8 @@ pub struct Lights<'a> {
     pub tape_moving: bool,
     pub disk: Option<bool>,
     pub debugger: bool,
+    /// Fast-forward: Alt+F, or the tape moving with its sound off.
+    pub fast: bool,
     pub model: &'a str,
 }
 
@@ -283,6 +285,9 @@ impl Panel {
         }
         if lights.debugger {
             lamp(buf, &mut x, true, 0x40a0ff, "ОТЛАДКА");
+        }
+        if lights.fast {
+            lamp(buf, &mut x, true, 0xc060ff, "УСКОРЕНИЕ");
         }
         let model = lights.model;
         font::draw(
@@ -577,6 +582,7 @@ mod tests {
                 tape_moving: moving,
                 disk: None,
                 debugger: false,
+                fast: false,
                 model: "БК-0010.01",
             };
             p.draw(&mut buf, &lights, &|_| false, false);
@@ -610,6 +616,7 @@ mod tests {
             tape_moving: true,
             disk: Some(false),
             debugger: false,
+            fast: true,
             model: "БК-0011М",
         };
         p.draw(&mut buf, &lights, &|c| c == 0o101 || c == 0o012, false);
