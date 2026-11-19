@@ -19,6 +19,6 @@ mod disasm;
 pub mod koi8;
 pub mod timing;
 
-pub use bus::{Bus, BusError};
+pub use bus::{Bus, BusError, Cycle};
 pub use cpu::{Cpu, CpuState, psw, vector};
 pub use disasm::{Disassembly, Ref, disassemble, disassemble_with};

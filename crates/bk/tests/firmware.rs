@@ -42,7 +42,8 @@ fn run_frames(m: &mut Machine, n: usize) {
 #[test]
 fn monitor_draws_its_banner() {
     let Some(mut m) = machine() else { return };
-    run_frames(&mut m, 100);
+    // The banner shows for over a second before the screen clears.
+    run_frames(&mut m, 60);
     let mut screen = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT];
     m.render(&mut screen);
     let lit = screen.iter().filter(|&&p| p != 0).count();
@@ -165,25 +166,4 @@ fn bk0010_monitor_calls() {
     assert_eq!(word(0o2004), 1, "EMT 16 printed one character");
     assert_eq!(word(0o2006), 4, "EMT 20 printed three more");
     assert_eq!(word(0o2010), u16::from(b'Q'), "EMT 6 returned the key");
-}
-
-/// Instruction timing per model: the tables match the BK-0010; on the
-/// BK-0011M each memory access costs 2 more clocks (tools/vm1-timing).
-#[test]
-fn bk0011m_memory_accesses_cost_more_clocks() {
-    for (model, nop, mov_imm) in [(Model::Bk0010, 12, 28), (Model::Bk0011m, 14, 32)] {
-        let Some(mut m) = machine_of(model) else {
-            return;
-        };
-        run_frames(&mut m, 150);
-        let p = assemble("NOP\nMOV #5, R0\nDONE: BR DONE", 0o1000).unwrap();
-        m.load_bin(&BinFile {
-            address: 0o1000,
-            data: p.bytes,
-        })
-        .unwrap();
-        m.start_at(0o1000);
-        assert_eq!(m.step(), nop, "{model:?} NOP");
-        assert_eq!(m.step(), mov_imm, "{model:?} MOV #n, R0");
-    }
 }

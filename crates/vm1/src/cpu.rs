@@ -1,4 +1,4 @@
-use crate::bus::{Bus, BusError};
+use crate::bus::{Bus, BusError, Cycle};
 use crate::decode::{Cond, DoubleOp, Instr, Operand, SingleOp, decode};
 use crate::timing as t;
 
@@ -59,7 +59,7 @@ enum Loc {
     Mem(u16),
 }
 
-type Exec = Result<(u32, Option<Fault>), BusError>;
+type Exec = Result<Option<Fault>, BusError>;
 
 /// Everything about the CPU, for save states.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,6 +71,12 @@ pub struct CpuState {
     /// Pending STOP (IRQ1) and 50 Hz (EVNT) requests.
     pub irq1: bool,
     pub evnt: bool,
+    /// The next opcode fetch overlaps the end of the last instruction
+    /// (see [`crate::timing::OVERLAP`]).
+    pub overlap: bool,
+    /// The last instruction is still sign-extending a byte into a register
+    /// (see [`crate::timing::SIGN_EXTEND`]).
+    pub sign_extend: bool,
 }
 
 /// K1801VM1 processor state.
@@ -83,6 +89,13 @@ pub struct Cpu {
     halted: bool,
     irq1: bool,
     evnt: bool,
+    overlap: bool,
+    sign_extend: bool,
+    /// CPU clocks into the current step: the bus-cycle schedule's clock.
+    t: u32,
+    /// Extra clocks before every write strobe: 0 on the BK-0010; the
+    /// BK-0011M holds writes longer.
+    pub write_delay: u32,
 }
 
 impl Default for Cpu {
@@ -100,13 +113,19 @@ impl Cpu {
             halted: false,
             irq1: false,
             evnt: false,
+            overlap: false,
+            sign_extend: false,
+            t: 0,
+            write_delay: 0,
         }
     }
 
     /// Power-on or reset. The VM1 starts at the address in the high byte of
     /// SEL1, so the machine passes `sel1 & 0o177400` (0o140000 on the BK-0011M).
     pub fn reset(&mut self, start: u16) {
+        let write_delay = self.write_delay;
         *self = Self::new();
+        self.write_delay = write_delay;
         self.r[PC] = start;
     }
 
@@ -122,6 +141,8 @@ impl Cpu {
             halted: self.halted,
             irq1: self.irq1,
             evnt: self.evnt,
+            overlap: self.overlap,
+            sign_extend: self.sign_extend,
         }
     }
 
@@ -132,6 +153,8 @@ impl Cpu {
         self.halted = s.halted;
         self.irq1 = s.irq1;
         self.evnt = s.evnt;
+        self.overlap = s.overlap;
+        self.sign_extend = s.sign_extend;
     }
 
     /// Inside `WAIT`, waiting for an interrupt.
@@ -165,39 +188,47 @@ impl Cpu {
     }
 
     /// Execute one instruction, then take any traps and interrupts that are
-    /// due. Returns the CPU clock cycles used.
+    /// due. Returns the CPU clock cycles used: the bus-cycle schedule of
+    /// [`crate::timing`], with each cycle's reply delay from [`Bus::cycle`].
     pub fn step<B: Bus>(&mut self, bus: &mut B) -> u32 {
+        self.t = 0;
         if self.halted {
             return t::WAIT_POLL;
         }
-        let (cycles, fault, skip_interrupts) = if self.waiting {
-            (t::WAIT_POLL, None, false)
+        let (fault, skip_interrupts) = if self.waiting {
+            self.t = t::WAIT_POLL;
+            (None, false)
         } else {
             self.execute_next(bus)
         };
-        if skip_interrupts {
-            cycles
-        } else {
-            cycles + self.service_interrupts(bus, fault)
+        if !skip_interrupts {
+            self.service_interrupts(bus, fault);
         }
+        self.t
     }
 
-    fn execute_next<B: Bus>(&mut self, bus: &mut B) -> (u32, Option<Fault>, bool) {
-        let pc = self.r[PC];
-        self.r[PC] = pc.wrapping_add(2);
-        let Ok(opcode) = bus.read_word(pc & !1) else {
-            return (t::ILLEGAL, Some(Fault::BusError), false);
+    fn execute_next<B: Bus>(&mut self, bus: &mut B) -> (Option<Fault>, bool) {
+        let Ok(opcode) = self.fetch(bus) else {
+            return (Some(Fault::BusError), false);
         };
+        if std::mem::take(&mut self.overlap) {
+            self.t -= t::OVERLAP;
+        }
+        if std::mem::take(&mut self.sign_extend) {
+            self.t = self.t.max(t::SIGN_EXTEND);
+        }
         let instr = decode(opcode);
+        self.overlap = !ends_on_register(instr);
+        self.sign_extend = matches!(instr, Instr::Double(DoubleOp::Mov, true, _, d) | Instr::Mfps(d) if d.mode() == 0);
         match self.execute(bus, instr) {
-            Ok((cycles, fault)) => {
+            Ok(fault) => {
                 // RTT that sets T delays the trace trap by one instruction; the
                 // VM1 checks no interrupts at all after it.
                 let skip = instr == Instr::Rtt && self.psw & psw::T != 0;
-                (cycles, fault, skip)
+                (fault, skip)
             }
             // The instruction was aborted at the failing bus cycle.
-            Err(BusError) => (t::ILLEGAL, Some(Fault::BusError), false),
+            Err(BusError) => (Some(Fault::BusError), false),
         }
     }
 
@@ -212,8 +243,7 @@ impl Cpu {
     /// chip-level VM1 model: an EMT executed with EVNT pending enters the EMT
     /// handler first, and one executed with T set takes no trace trap until
     /// the handler's RTI restores T (tools/vm1-timing, `EVNT_AT`).
-    fn service_interrupts<B: Bus>(&mut self, bus: &mut B, mut fault: Option<Fault>) -> u32 {
-        let mut cycles = 0;
+    fn service_interrupts<B: Bus>(&mut self, bus: &mut B, mut fault: Option<Fault>) {
         // No trace trap is taken while in WAIT, and at most one per step.
         let mut trace_done = self.waiting;
         let instruction_trap = match fault {
@@ -224,7 +254,7 @@ impl Cpu {
             _ => None,
         };
         if let Some(vector) = instruction_trap {
-            // The trap sequence is already counted in the instruction time.
+            self.gap(t::TRAP_INSTR);
             fault = self.enter_trap(bus, vector).err().map(|_| Fault::BusError);
         }
         loop {
@@ -236,8 +266,10 @@ impl Cpu {
                 fault = None;
                 is_bus_error = f == Fault::BusError;
                 if is_bus_error {
+                    self.gap(t::AFTER_TIMEOUT);
                     vector::BUS_ERROR
                 } else {
+                    self.gap(t::TRAP_INSTR);
                     vector::RESERVED
                 }
             } else if !trace_done && p & psw::T != 0 {
@@ -248,7 +280,7 @@ impl Cpu {
                 // Halt-mode entry writes SEL1, setting its "written" flag (bit 2)
                 // so the handler can tell STOP from a bus hang. The BK has no
                 // halt-mode memory, so the CPU ends up at vector 4 in user mode.
-                let _ = bus.write_word(SEL1, 0o210);
+                let _ = self.wr(bus, SEL1, 0o210, false, t::TRAP_PUSH_STROBE);
                 vector::BUS_ERROR
             } else if self.evnt && interruptible {
                 self.evnt = false;
@@ -260,7 +292,8 @@ impl Cpu {
                 // 177674/177676, which do not exist on the BK, so it becomes
                 // a bus error. The BOS manual (§1.3) confirms HALT sets the
                 // SEL1 write flag, which is how BOS tells it from a bus error.
-                let _ = bus.write_word(SEL1, 0o210);
+                self.gap(t::TRAP_INSTR);
+                let _ = self.wr(bus, SEL1, 0o210, false, t::TRAP_PUSH_STROBE);
                 fault = Some(Fault::BusError);
                 continue;
             } else {
@@ -268,7 +301,6 @@ impl Cpu {
             };
 
             self.waiting = false;
-            cycles += t::INTERRUPT_ENTRY;
             if self.enter_trap(bus, vector).is_err() {
                 if is_bus_error {
                     self.halted = true; // double bus error
@@ -277,123 +309,212 @@ impl Cpu {
                 fault = Some(Fault::BusError);
             }
         }
-        cycles
     }
 
+    /// The trap sequence: push PSW and PC, read the new PC and PSW.
     fn enter_trap<B: Bus>(&mut self, bus: &mut B, vector: u16) -> Result<(), BusError> {
         let (old_pc, old_psw) = (self.r[PC], self.psw);
-        self.push(bus, old_psw)?;
-        self.push(bus, old_pc)?;
-        let pc = self.read_w(bus, vector)?;
-        let new_psw = self.read_w(bus, vector.wrapping_add(2))?;
+        let [g1, g2, g3, g4] = t::TRAP_GAPS;
+        self.r[SP] = self.r[SP].wrapping_sub(2);
+        self.wr(bus, self.r[SP], old_psw, false, t::TRAP_PUSH_STROBE)?;
+        self.gap(g1);
+        self.r[SP] = self.r[SP].wrapping_sub(2);
+        self.wr(bus, self.r[SP], old_pc, false, t::TRAP_PUSH_STROBE)?;
+        self.gap(g2);
+        let pc = self.rd(bus, vector, false)?;
+        self.gap(g3);
+        let new_psw = self.rd(bus, vector.wrapping_add(2), false)?;
+        self.gap(g4);
         self.r[PC] = pc;
         self.psw = new_psw & 0o377; // only the low byte is loaded; leaves halt mode
+        self.overlap = true;
         Ok(())
     }
 
-    // ----- memory helpers -----
+    // ----- bus cycles, on the schedule's clock -----
 
-    fn read_w<B: Bus>(&mut self, bus: &mut B, addr: u16) -> Result<u16, BusError> {
-        bus.read_word(addr & !1)
+    fn gap(&mut self, clocks: u32) {
+        self.t += clocks;
     }
 
-    fn write_w<B: Bus>(&mut self, bus: &mut B, addr: u16, value: u16) -> Result<(), BusError> {
-        bus.write_word(addr & !1, value)
+    /// A read cycle with its strobe now (a word read ignores address bit 0).
+    fn rd<B: Bus>(&mut self, bus: &mut B, addr: u16, byte: bool) -> Result<u16, BusError> {
+        let wait = bus.cycle(self.t, addr, Cycle::Read);
+        let r = if byte {
+            bus.read_byte(addr).map(u16::from)
+        } else {
+            bus.read_word(addr & !1)
+        };
+        self.t += if r.is_ok() {
+            wait + t::AFTER_REPLY
+        } else {
+            t::TIMEOUT
+        };
+        r
+    }
+
+    /// A write cycle whose strobe comes `strobe` clocks from now.
+    fn wr<B: Bus>(
+        &mut self,
+        bus: &mut B,
+        addr: u16,
+        value: u16,
+        byte: bool,
+        strobe: u32,
+    ) -> Result<(), BusError> {
+        self.t += strobe + self.write_delay;
+        let wait = bus.cycle(self.t, addr, Cycle::Write);
+        let r = if byte {
+            bus.write_byte(addr, value as u8)
+        } else {
+            bus.write_word(addr & !1, value)
+        };
+        self.t += if r.is_ok() {
+            wait + t::AFTER_REPLY
+        } else {
+            // Timed from the CPU's own strobe, before the board's delay.
+            t::TIMEOUT - self.write_delay
+        };
+        r
+    }
+
+    /// A read-modify-write (DATIO) cycle: read now, write `f`'s result.
+    fn rmw<B: Bus>(
+        &mut self,
+        bus: &mut B,
+        addr: u16,
+        byte: bool,
+        f: impl FnOnce(&mut Self, u16) -> u16,
+    ) -> Result<(), BusError> {
+        let wait = bus.cycle(self.t, addr, Cycle::Read);
+        let d = if byte {
+            bus.read_byte(addr).map(u16::from)
+        } else {
+            bus.read_word(addr & !1)
+        };
+        let d = match d {
+            Ok(d) => d,
+            Err(e) => {
+                self.t += t::TIMEOUT;
+                return Err(e);
+            }
+        };
+        self.t += wait + t::RMW_TURN + self.write_delay;
+        let v = f(self, d);
+        let wait = bus.cycle(self.t, addr, Cycle::Write);
+        let r = if byte {
+            bus.write_byte(addr, v as u8)
+        } else {
+            bus.write_word(addr & !1, v)
+        };
+        self.t += if r.is_ok() {
+            wait + t::AFTER_REPLY
+        } else {
+            t::TIMEOUT - self.write_delay
+        };
+        r
     }
 
     fn fetch<B: Bus>(&mut self, bus: &mut B) -> Result<u16, BusError> {
         let pc = self.r[PC];
         self.r[PC] = pc.wrapping_add(2);
-        self.read_w(bus, pc)
-    }
-
-    fn push<B: Bus>(&mut self, bus: &mut B, value: u16) -> Result<(), BusError> {
-        self.r[SP] = self.r[SP].wrapping_sub(2);
-        let sp = self.r[SP];
-        self.write_w(bus, sp, value)
+        self.rd(bus, pc, false)
     }
 
     fn pop<B: Bus>(&mut self, bus: &mut B) -> Result<u16, BusError> {
         let sp = self.r[SP];
         self.r[SP] = sp.wrapping_add(2);
-        self.read_w(bus, sp)
+        self.rd(bus, sp, false)
     }
 
     /// Resolve an operand to a register or memory address, applying
-    /// autoincrement/decrement and fetching index words.
-    fn ea<B: Bus>(&mut self, bus: &mut B, o: Operand, byte: bool) -> Result<Loc, BusError> {
+    /// autoincrement/decrement and doing the bus cycles its mode needs
+    /// (index words, pointers): the first now, each followed by
+    /// [`t::CHAIN`]. Returns whether it made any.
+    fn ea<B: Bus>(&mut self, bus: &mut B, o: Operand, byte: bool) -> Result<(Loc, bool), BusError> {
         let r = o.reg();
         // Byte autoincrement/decrement steps by 1, except on SP and PC.
         let step = if byte && r < SP { 1 } else { 2 };
+        let chain = |cpu: &mut Self, v: u16| {
+            cpu.gap(t::CHAIN);
+            v
+        };
         Ok(match o.mode() {
-            0 => Loc::Reg(r),
-            1 => Loc::Mem(self.r[r]),
+            0 => (Loc::Reg(r), false),
+            1 => (Loc::Mem(self.r[r]), false),
             2 => {
                 let a = self.r[r];
                 self.r[r] = a.wrapping_add(step);
-                Loc::Mem(a)
+                (Loc::Mem(a), false)
             }
             3 => {
                 let a = self.r[r];
                 self.r[r] = a.wrapping_add(2);
-                Loc::Mem(self.read_w(bus, a)?)
+                let p = self.rd(bus, a, false)?;
+                (Loc::Mem(chain(self, p)), true)
             }
             4 => {
                 self.r[r] = self.r[r].wrapping_sub(step);
-                Loc::Mem(self.r[r])
+                (Loc::Mem(self.r[r]), false)
             }
             5 => {
                 self.r[r] = self.r[r].wrapping_sub(2);
                 let a = self.r[r];
-                Loc::Mem(self.read_w(bus, a)?)
+                let p = self.rd(bus, a, false)?;
+                (Loc::Mem(chain(self, p)), true)
             }
             6 => {
                 let x = self.fetch(bus)?;
-                Loc::Mem(self.r[r].wrapping_add(x))
+                let x = chain(self, x);
+                (Loc::Mem(self.r[r].wrapping_add(x)), true)
             }
             _ => {
                 let x = self.fetch(bus)?;
+                let x = chain(self, x);
                 let a = self.r[r].wrapping_add(x);
-                Loc::Mem(self.read_w(bus, a)?)
+                let p = self.rd(bus, a, false)?;
+                (Loc::Mem(chain(self, p)), true)
             }
         })
     }
 
-    /// Address of a memory operand (mode != 0).
-    fn address<B: Bus>(&mut self, bus: &mut B, o: Operand) -> Result<u16, BusError> {
-        match self.ea(bus, o, false)? {
-            Loc::Mem(a) => Ok(a),
-            Loc::Reg(_) => unreachable!("caller checks mode != 0"),
-        }
+    fn reg_load(&self, r: usize, byte: bool) -> u16 {
+        if byte { self.r[r] & 0xff } else { self.r[r] }
     }
 
+    fn reg_store(&mut self, r: usize, byte: bool, v: u16) {
+        self.r[r] = if byte {
+            (self.r[r] & 0xff00) | (v & 0xff)
+        } else {
+            v
+        };
+    }
+
+    /// Read an operand: a register, or a read cycle now.
     fn load<B: Bus>(&mut self, bus: &mut B, loc: Loc, byte: bool) -> Result<u16, BusError> {
-        match (loc, byte) {
-            (Loc::Reg(r), false) => Ok(self.r[r]),
-            (Loc::Reg(r), true) => Ok(self.r[r] & 0xff),
-            (Loc::Mem(a), false) => self.read_w(bus, a),
-            (Loc::Mem(a), true) => bus.read_byte(a).map(u16::from),
+        match loc {
+            Loc::Reg(r) => Ok(self.reg_load(r, byte)),
+            Loc::Mem(a) => self.rd(bus, a, byte),
         }
     }
 
-    fn store<B: Bus>(&mut self, bus: &mut B, loc: Loc, byte: bool, v: u16) -> Result<(), BusError> {
-        match (loc, byte) {
-            (Loc::Reg(r), false) => self.r[r] = v,
-            (Loc::Reg(r), true) => self.r[r] = (self.r[r] & 0xff00) | (v & 0xff),
-            (Loc::Mem(a), false) => self.write_w(bus, a, v)?,
-            (Loc::Mem(a), true) => bus.write_byte(a, v as u8)?,
+    /// Modify an operand in place: a register, or a read-modify-write cycle.
+    fn modify<B: Bus>(
+        &mut self,
+        bus: &mut B,
+        loc: Loc,
+        byte: bool,
+        f: impl FnOnce(&mut Self, u16) -> u16,
+    ) -> Result<(), BusError> {
+        match loc {
+            Loc::Reg(r) => {
+                let d = self.reg_load(r, byte);
+                let v = f(self, d);
+                self.reg_store(r, byte, v);
+                Ok(())
+            }
+            Loc::Mem(a) => self.rmw(bus, a, byte, f),
         }
-        Ok(())
-    }
-
-    /// The VM1 writes bytes with a read-modify-write bus cycle, so a byte
-    /// write that doesn't otherwise read its destination still reads it
-    /// first. This matters for registers with read side effects.
-    fn byte_write_read<B: Bus>(&mut self, bus: &mut B, loc: Loc) -> Result<(), BusError> {
-        if let Loc::Mem(a) = loc {
-            bus.read_byte(a)?;
-        }
-        Ok(())
     }
 
     // ----- flags -----
@@ -436,26 +557,66 @@ impl Cpu {
 
     // ----- instructions -----
 
+    /// The address JMP and JSR jump to, with their timing up to the jump
+    /// (JMP) or the push (JSR).
+    fn jump_target<B: Bus>(
+        &mut self,
+        bus: &mut B,
+        dst: Operand,
+        jsr: bool,
+    ) -> Result<u16, BusError> {
+        let m = dst.mode();
+        if matches!(m, 1 | 2 | 4) {
+            self.gap(if jsr {
+                t::jsr_direct(m)
+            } else {
+                t::jmp_direct(m)
+            });
+        } else {
+            self.gap(t::first(m));
+        }
+        let (loc, read) = self.ea(bus, dst, false)?;
+        if read {
+            // ea left CHAIN after the last read.
+            self.gap(
+                if jsr {
+                    t::JSR_AFTER_READ
+                } else {
+                    t::JMP_AFTER_READ
+                } - t::CHAIN,
+            );
+        }
+        match loc {
+            Loc::Mem(a) => Ok(a),
+            Loc::Reg(_) => unreachable!("caller checks mode != 0"),
+        }
+    }
+
     fn execute<B: Bus>(&mut self, bus: &mut B, instr: Instr) -> Exec {
-        let done = |cycles| Ok((cycles, None));
         match instr {
-            Instr::Halt | Instr::Start | Instr::Step => Ok((t::ILLEGAL, Some(Fault::Halt))),
-            Instr::Reserved => Ok((t::ILLEGAL, Some(Fault::Reserved))),
-            Instr::Bpt => Ok((t::EMT, Some(Fault::Bpt))),
-            Instr::Iot => Ok((t::EMT, Some(Fault::Iot))),
-            Instr::Emt(_) => Ok((t::EMT, Some(Fault::Emt))),
-            Instr::Trap(_) => Ok((t::EMT, Some(Fault::Trap))),
+            Instr::Halt | Instr::Start | Instr::Step => Ok(Some(Fault::Halt)),
+            Instr::Reserved => Ok(Some(Fault::Reserved)),
+            Instr::Bpt => Ok(Some(Fault::Bpt)),
+            Instr::Iot => Ok(Some(Fault::Iot)),
+            Instr::Emt(_) => Ok(Some(Fault::Emt)),
+            Instr::Trap(_) => Ok(Some(Fault::Trap)),
             Instr::Wait => {
+                self.gap(t::TAIL);
                 self.waiting = true;
-                done(t::WAIT)
+                Ok(None)
             }
             Instr::Reset => {
                 bus.reset_devices();
-                done(t::RESET)
+                self.gap(t::RESET);
+                Ok(None)
             }
             Instr::Rti | Instr::Rtt => {
+                let [g1, g2, g3] = t::RTI;
+                self.gap(g1);
                 let pc = self.pop(bus)?;
+                self.gap(g2);
                 let new_psw = self.pop(bus)?;
+                self.gap(g3);
                 self.r[PC] = pc;
                 // Outside the halt-mode ROM area only the low byte is loaded
                 // and the halt-mode bit is kept.
@@ -464,109 +625,158 @@ impl Cpu {
                 } else {
                     new_psw & 0o777
                 };
-                done(t::RTI)
+                Ok(None)
             }
             Instr::Jmp(dst) => {
                 if dst.mode() == 0 {
-                    return Ok((t::EMT, Some(Fault::BusError)));
+                    self.gap(t::TRAP_INSTR);
+                    return Ok(Some(Fault::BusError));
                 }
-                self.r[PC] = self.address(bus, dst)?;
-                done(t::DST_READ[dst.mode() as usize])
+                self.r[PC] = self.jump_target(bus, dst, false)?;
+                Ok(None)
             }
             Instr::Jsr(reg, dst) => {
                 if dst.mode() == 0 {
-                    return Ok((t::EMT, Some(Fault::BusError)));
+                    self.gap(t::TRAP_INSTR);
+                    return Ok(Some(Fault::BusError));
                 }
-                let target = self.address(bus, dst)?;
+                let target = self.jump_target(bus, dst, true)?;
                 let reg = reg as usize;
                 self.r[SP] = self.r[SP].wrapping_sub(2);
                 let (sp, linkage) = (self.r[SP], self.r[reg]);
-                self.write_w(bus, sp, linkage)?;
+                let strobe = self.t + t::JSR_PUSH_STROBE;
+                self.wr(bus, sp, linkage, false, t::JSR_PUSH_STROBE)?;
+                self.t = (self.t + 1).max(strobe + t::JSR_NEXT_FETCH);
                 self.r[reg] = self.r[PC];
                 self.r[PC] = target;
-                done(t::JSR[dst.mode() as usize])
+                Ok(None)
             }
             Instr::Rts(reg) => {
                 let reg = reg as usize;
+                self.gap(t::RTS);
                 let target = self.r[reg];
                 let saved = self.pop(bus)?;
+                self.gap(t::TAIL);
                 self.r[PC] = target;
                 self.r[reg] = saved;
-                done(t::RTS)
+                Ok(None)
             }
             Instr::Mark(n) => {
+                self.gap(t::MARK);
                 self.r[SP] = self.r[PC].wrapping_add(2 * n as u16);
                 self.r[PC] = self.r[5];
                 self.r[5] = self.pop(bus)?;
-                done(t::MARK)
+                self.gap(t::TAIL);
+                Ok(None)
             }
             Instr::Sob(reg, n) => {
+                self.gap(t::SOB);
                 let reg = reg as usize;
                 self.r[reg] = self.r[reg].wrapping_sub(1);
                 if self.r[reg] != 0 {
                     self.r[PC] = self.r[PC].wrapping_sub(2 * n as u16);
                 }
-                done(t::SOB)
+                Ok(None)
             }
             Instr::Branch(c, offset) => {
+                self.gap(t::BRANCH);
                 if self.cond(c) {
                     self.r[PC] = self.r[PC].wrapping_add((offset as i16 as u16).wrapping_mul(2));
                 }
-                done(t::BRANCH)
+                Ok(None)
             }
             Instr::ClearFlags(mask) => {
+                self.gap(t::TAIL);
                 self.psw &= !(mask as u16);
-                done(if mask == 0 { t::NOP } else { t::REGREG })
+                Ok(None)
             }
             Instr::SetFlags(mask) => {
+                self.gap(t::TAIL);
                 self.psw |= mask as u16;
-                done(if mask == 0 { t::NOP } else { t::REGREG })
+                Ok(None)
             }
-            Instr::Swab(dst) => {
-                let loc = self.ea(bus, dst, false)?;
-                let v = self.load(bus, loc, false)?.swap_bytes();
-                self.store(bus, loc, false, v)?;
-                self.set_nzvc(v & 0x80 != 0, v & 0xff == 0, false, false);
-                done(t::REGREG + t::DST[dst.mode() as usize])
-            }
-            Instr::Sxt(dst) => {
-                let n = self.flag(psw::N);
-                let loc = self.ea(bus, dst, false)?;
-                self.store(bus, loc, false, if n { 0xffff } else { 0 })?;
-                self.set_nzvc(n, !n, false, self.flag(psw::C));
-                done(t::REGREG + t::DST[dst.mode() as usize])
-            }
+            Instr::Swab(dst) => self.modify_operand(bus, dst, false, 0, |cpu, d| {
+                let v = d.swap_bytes();
+                cpu.set_nzvc(v & 0x80 != 0, v & 0xff == 0, false, false);
+                v
+            }),
+            Instr::Sxt(dst) => self.modify_operand(bus, dst, false, 0, |cpu, _| {
+                let n = cpu.flag(psw::N);
+                cpu.set_nzvc(n, !n, false, cpu.flag(psw::C));
+                if n { 0xffff } else { 0 }
+            }),
             Instr::Mtps(src) => {
-                let loc = self.ea(bus, src, true)?;
-                let v = self.load(bus, loc, true)?;
+                let m = src.mode();
+                let v = if m == 0 {
+                    // From a register: the next opcode is fetched and thrown
+                    // away, and fetched again a fixed time after.
+                    self.gap(t::TAIL);
+                    let fetch = self.t;
+                    self.rd(bus, self.r[PC], false)?;
+                    let refetch = fetch + t::MTPS_REFETCH;
+                    self.gap(refetch.saturating_sub(self.t).max(1));
+                    self.reg_load(src.reg(), true)
+                } else {
+                    self.gap(t::first(m));
+                    let (loc, _) = self.ea(bus, src, true)?;
+                    let v = self.load(bus, loc, true)?;
+                    self.gap(t::TAIL_MTPS);
+                    v
+                };
                 // The T bit can't be changed by MTPS.
                 self.psw = (self.psw & !0o357) | (v & 0o357);
-                done(t::REGREG + t::DST[src.mode() as usize])
+                Ok(None)
             }
             Instr::Mfps(dst) => {
                 let v = self.psw & 0xff;
-                let loc = self.ea(bus, dst, true)?;
-                match loc {
-                    Loc::Reg(r) => self.r[r] = v as u8 as i8 as u16,
-                    Loc::Mem(_) => {
-                        self.byte_write_read(bus, loc)?;
-                        self.store(bus, loc, true, v)?;
-                    }
+                if dst.mode() == 0 {
+                    // MFPS to a register sign-extends into the whole register.
+                    self.gap(t::TAIL);
+                    self.r[dst.reg()] = v as u8 as i8 as u16;
+                    self.set_nzvc(v & 0x80 != 0, v == 0, false, self.flag(psw::C));
+                    return Ok(None);
                 }
-                self.set_nzvc(v & 0x80 != 0, v == 0, false, self.flag(psw::C));
-                done(t::REGREG + t::DST[dst.mode() as usize])
+                self.modify_operand(bus, dst, true, 0, |cpu, _| {
+                    cpu.set_nzvc(v & 0x80 != 0, v == 0, false, cpu.flag(psw::C));
+                    v
+                })
             }
             Instr::Xor(reg, dst) => {
-                let loc = self.ea(bus, dst, false)?;
-                let d = self.load(bus, loc, false)?;
-                let v = d ^ self.r[reg as usize];
-                self.store(bus, loc, false, v)?;
-                self.set_nzvc(v & 0x8000 != 0, v == 0, false, self.flag(psw::C));
-                done(t::REGREG + t::DST_READ[dst.mode() as usize])
+                let s = self.r[reg as usize];
+                self.modify_operand(bus, dst, false, t::XOR_EXTRA, |cpu, d| {
+                    let v = d ^ s;
+                    cpu.set_nzvc(v & 0x8000 != 0, v == 0, false, cpu.flag(psw::C));
+                    v
+                })
             }
             Instr::Single(op, byte, dst) => self.single(bus, op, byte, dst),
             Instr::Double(op, byte, src, dst) => self.double(bus, op, byte, src, dst),
         }
+    }
+
+    /// A single-operand instruction that changes its operand: a register
+    /// operation, or the operand's address cycles and a read-modify-write
+    /// cycle (even CLR and SXT read first, as the chip does).
+    fn modify_operand<B: Bus>(
+        &mut self,
+        bus: &mut B,
+        dst: Operand,
+        byte: bool,
+        extra: u32,
+        f: impl FnOnce(&mut Self, u16) -> u16,
+    ) -> Exec {
+        let m = dst.mode();
+        if m == 0 {
+            self.gap(t::TAIL);
+        } else {
+            self.gap(t::first(m) + extra);
+        }
+        let (loc, _) = self.ea(bus, dst, byte)?;
+        self.modify(bus, loc, byte, f)?;
+        if m != 0 {
+            self.gap(t::TAIL_RMW);
+        }
+        Ok(None)
     }
 
     fn single<B: Bus>(&mut self, bus: &mut B, op: SingleOp, byte: bool, dst: Operand) -> Exec {
@@ -575,57 +785,57 @@ impl Cpu {
         } else {
             (0x8000, 0xffff)
         };
-        let m = dst.mode() as usize;
-        let loc = self.ea(bus, dst, byte)?;
-
-        if op == SingleOp::Clr {
-            if byte {
-                self.byte_write_read(bus, loc)?;
+        if op == SingleOp::Tst {
+            let m = dst.mode();
+            if m == 0 {
+                self.gap(t::TAIL);
+            } else {
+                self.gap(t::first(m));
             }
-            self.store(bus, loc, byte, 0)?;
-            self.set_nzvc(false, true, false, false);
-            return Ok((t::REGREG + t::DST[m], None));
+            let (loc, _) = self.ea(bus, dst, byte)?;
+            let d = self.load(bus, loc, byte)?;
+            if m != 0 {
+                self.gap(t::TAIL);
+            }
+            self.set_nzvc(d & sign != 0, d == 0, false, false);
+            return Ok(None);
         }
-
-        let d = self.load(bus, loc, byte)?;
-        let c = self.flag(psw::C);
-        let (r, v, c) = match op {
-            SingleOp::Tst => {
-                self.set_nzvc(d & sign != 0, d == 0, false, false);
-                return Ok((t::REGREG + t::SRC[m], None));
-            }
-            SingleOp::Clr => unreachable!("handled above"),
-            SingleOp::Com => (!d & mask, false, true),
-            SingleOp::Inc => {
-                let r = d.wrapping_add(1) & mask;
-                (r, r == sign, c)
-            }
-            SingleOp::Dec => (d.wrapping_sub(1) & mask, d == sign, c),
-            SingleOp::Neg => {
-                let r = d.wrapping_neg() & mask;
-                (r, r == sign, r != 0)
-            }
-            SingleOp::Adc => {
-                let r = d.wrapping_add(c as u16) & mask;
-                (r, c && r == sign, c && r == 0)
-            }
-            SingleOp::Sbc => {
-                let r = d.wrapping_sub(c as u16) & mask;
-                (r, c && d == sign, c && r == mask)
-            }
-            SingleOp::Ror | SingleOp::Rol | SingleOp::Asr | SingleOp::Asl => {
-                let (r, carry) = match op {
-                    SingleOp::Ror => ((d >> 1) | if c { sign } else { 0 }, d & 1 != 0),
-                    SingleOp::Rol => (((d << 1) | c as u16) & mask, d & sign != 0),
-                    SingleOp::Asr => ((d >> 1) | (d & sign), d & 1 != 0),
-                    _ => ((d << 1) & mask, d & sign != 0),
-                };
-                (r, (r & sign != 0) != carry, carry)
-            }
-        };
-        self.store(bus, loc, byte, r)?;
-        self.set_nzvc(r & sign != 0, r == 0, v, c);
-        Ok((t::REGREG + t::DST[m], None))
+        self.modify_operand(bus, dst, byte, 0, |cpu, d| {
+            let c = cpu.flag(psw::C);
+            let (r, v, c) = match op {
+                SingleOp::Clr => (0, false, false),
+                SingleOp::Tst => unreachable!("handled above"),
+                SingleOp::Com => (!d & mask, false, true),
+                SingleOp::Inc => {
+                    let r = d.wrapping_add(1) & mask;
+                    (r, r == sign, c)
+                }
+                SingleOp::Dec => (d.wrapping_sub(1) & mask, d == sign, c),
+                SingleOp::Neg => {
+                    let r = d.wrapping_neg() & mask;
+                    (r, r == sign, r != 0)
+                }
+                SingleOp::Adc => {
+                    let r = d.wrapping_add(c as u16) & mask;
+                    (r, c && r == sign, c && r == 0)
+                }
+                SingleOp::Sbc => {
+                    let r = d.wrapping_sub(c as u16) & mask;
+                    (r, c && d == sign, c && r == mask)
+                }
+                SingleOp::Ror | SingleOp::Rol | SingleOp::Asr | SingleOp::Asl => {
+                    let (r, carry) = match op {
+                        SingleOp::Ror => ((d >> 1) | if c { sign } else { 0 }, d & 1 != 0),
+                        SingleOp::Rol => (((d << 1) | c as u16) & mask, d & sign != 0),
+                        SingleOp::Asr => ((d >> 1) | (d & sign), d & 1 != 0),
+                        _ => ((d << 1) & mask, d & sign != 0),
+                    };
+                    (r, (r & sign != 0) != carry, carry)
+                }
+            };
+            cpu.set_nzvc(r & sign != 0, r == 0, v, c);
+            r
+        })
     }
 
     fn double<B: Bus>(
@@ -641,20 +851,25 @@ impl Cpu {
         } else {
             (0x8000, 0xffff)
         };
-        let (sm, dm) = (src.mode() as usize, dst.mode() as usize);
+        let (sm, dm) = (src.mode(), dst.mode());
 
         // The source is fully read before the destination address is formed.
-        let sloc = self.ea(bus, src, byte)?;
-        let s = self.load(bus, sloc, byte)?;
-        let dloc = self.ea(bus, dst, byte)?;
-
-        let write_time = t::REGREG
-            + t::SRC[sm]
-            + if sm != 0 {
-                t::DST_AFTER_MEM_SRC[dm]
+        let s = if sm != 0 {
+            self.gap(t::first(sm));
+            let (sloc, _) = self.ea(bus, src, byte)?;
+            let s = self.load(bus, sloc, byte)?;
+            self.gap(if dm == 0 { t::TAIL } else { t::after_src(dm) });
+            s
+        } else {
+            let s = self.reg_load(src.reg(), byte);
+            self.gap(if dm == 0 {
+                t::TAIL
             } else {
-                t::DST[dm]
-            };
+                t::first(dm) + t::AFTER_REG_SRC
+            });
+            s
+        };
+        let (dloc, read) = self.ea(bus, dst, byte)?;
         let c = self.flag(psw::C);
 
         match op {
@@ -662,17 +877,27 @@ impl Cpu {
                 match (dloc, byte) {
                     // MOVB to a register sign-extends into the whole register.
                     (Loc::Reg(r), true) => self.r[r] = s as u8 as i8 as u16,
-                    (_, true) => {
-                        self.byte_write_read(bus, dloc)?;
-                        self.store(bus, dloc, true, s)?;
+                    (Loc::Reg(r), false) => self.r[r] = s,
+                    // A plain write cycle, byte or word (MOVB doesn't read its
+                    // destination: checked on the chip).
+                    (Loc::Mem(a), _) => {
+                        let strobe = if read {
+                            t::WRITE_AFTER_READ
+                        } else {
+                            t::write_strobe(dm)
+                        };
+                        self.wr(bus, a, s, byte, strobe)?;
+                        self.gap(t::TAIL);
                     }
-                    (_, false) => self.store(bus, dloc, false, s)?,
                 }
-                self.set_nzvc(s & sign != 0, s == 0, false, c);
-                Ok((write_time, None))
+                self.set_nzvc(s & sign != 0, s & mask == 0, false, c);
+                Ok(None)
             }
             DoubleOp::Cmp | DoubleOp::Bit => {
                 let d = self.load(bus, dloc, byte)?;
+                if dm != 0 {
+                    self.gap(t::TAIL);
+                }
                 if op == DoubleOp::Cmp {
                     let r = s.wrapping_sub(d) & mask;
                     let v = (s ^ d) & (s ^ r) & sign != 0;
@@ -681,27 +906,47 @@ impl Cpu {
                     let r = s & d;
                     self.set_nzvc(r & sign != 0, r == 0, false, c);
                 }
-                let read_time = if sm != 0 { t::SRC[dm] } else { t::DST_READ[dm] };
-                Ok((t::REGREG + t::SRC[sm] + read_time, None))
+                Ok(None)
             }
             DoubleOp::Bic | DoubleOp::Bis | DoubleOp::Add | DoubleOp::Sub => {
-                let d = self.load(bus, dloc, byte)?;
-                let (r, v, c) = match op {
-                    DoubleOp::Bic => (d & !s, false, c),
-                    DoubleOp::Bis => (d | s, false, c),
-                    DoubleOp::Add => {
-                        let r = d.wrapping_add(s);
-                        (r, !(s ^ d) & (s ^ r) & sign != 0, r < d)
-                    }
-                    _ => {
-                        let r = d.wrapping_sub(s);
-                        (r, (d ^ s) & (d ^ r) & sign != 0, d < s)
-                    }
-                };
-                self.store(bus, dloc, byte, r)?;
-                self.set_nzvc(r & sign != 0, r & mask == 0, v, c);
-                Ok((write_time, None))
+                self.modify(bus, dloc, byte, |cpu, d| {
+                    let (r, v, c) = match op {
+                        DoubleOp::Bic => (d & !s, false, c),
+                        DoubleOp::Bis => (d | s, false, c),
+                        DoubleOp::Add => {
+                            let r = d.wrapping_add(s);
+                            (r, !(s ^ d) & (s ^ r) & sign != 0, r < d)
+                        }
+                        _ => {
+                            let r = d.wrapping_sub(s);
+                            (r, (d ^ s) & (d ^ r) & sign != 0, d < s)
+                        }
+                    };
+                    cpu.set_nzvc(r & sign != 0, r & mask == 0, v, c);
+                    r
+                })?;
+                if dm != 0 {
+                    self.gap(t::TAIL_RMW);
+                }
+                Ok(None)
             }
         }
+    }
+}
+
+/// An instruction that ends with the plain register-operation tail: a
+/// register destination, or no operand at all (NOP and the flag
+/// instructions). After any other the VM1 overlaps the next opcode fetch
+/// with the end of the instruction.
+fn ends_on_register(instr: Instr) -> bool {
+    match instr {
+        Instr::ClearFlags(_) | Instr::SetFlags(_) => true,
+        Instr::Single(_, _, d)
+        | Instr::Swab(d)
+        | Instr::Sxt(d)
+        | Instr::Mfps(d)
+        | Instr::Xor(_, d)
+        | Instr::Double(_, _, _, d) => d.mode() == 0,
+        _ => false,
     }
 }

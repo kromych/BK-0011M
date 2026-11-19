@@ -2,7 +2,7 @@
 //! PSW = 0, then run until PC reaches the label DONE.
 
 use vm1::asm::{Program, assemble};
-use vm1::{Bus, BusError, Cpu, psw};
+use vm1::{Bus, BusError, Cpu, Cycle, psw};
 
 const ORIGIN: u16 = 0o1000;
 const RAM_END: u16 = 0o160000;
@@ -15,6 +15,8 @@ struct TestBus {
     byte_reads: Vec<u16>,
     resets: u32,
     virq: Option<u16>,
+    /// Clocks every device takes to reply.
+    wait: u32,
 }
 
 impl TestBus {
@@ -25,6 +27,7 @@ impl TestBus {
             byte_reads: vec![],
             resets: 0,
             virq: None,
+            wait: 0,
         }
     }
     fn word(&self, a: u16) -> u16 {
@@ -66,6 +69,9 @@ impl Bus for TestBus {
         }
         self.ram[addr as usize] = value;
         Ok(())
+    }
+    fn cycle(&mut self, _at: u32, _addr: u16, _kind: Cycle) -> u32 {
+        self.wait
     }
     fn reset_devices(&mut self) {
         self.resets += 1;
@@ -578,34 +584,58 @@ fn reset_instruction_resets_devices() {
     assert_eq!(bus.resets, 1);
 }
 
+/// Single-operand instructions read their destination before writing it
+/// (a read-modify-write bus cycle), even CLRB; MOVB is a plain write. Both
+/// as the chip-level model shows on its bus.
 #[test]
-fn byte_writes_read_their_destination_first() {
+fn single_operand_writes_read_first_movb_does_not() {
     let (_, bus, _) = run("MOVB R0, @#2000\nCLRB @#2001\nMOV R0, @#2002\nDONE: BR DONE");
-    assert_eq!(bus.byte_reads, [0o2000, 0o2001]);
+    assert_eq!(bus.byte_reads, [0o2001]);
 }
 
+/// Instruction times with every device replying 3 clocks after the strobe,
+/// against the MiST core's chip-level VM1 model under the same condition
+/// (tools/vm1-timing, BUSLOG, reply +3): from one opcode fetch to the next.
 #[test]
-fn instruction_timings() {
+fn instruction_timings_match_the_chip() {
     let cases: &[(&str, u32)] = &[
-        ("NOP", 12),
-        ("MOV R0, R1", 12),
-        ("MOV #1, R0", 12 + 12 + 4),
-        ("MOV R0, @#2000", 12 + 32),
-        ("MOV @#2000, @#2002", 12 + 24 + 24),
-        ("CMP R0, (R1)", 12 + 20),
-        ("TST (R1)", 12 + 12),
-        ("INC (R1)", 12 + 20),
+        ("NOP", 11),
+        ("CLC", 11),
+        ("MOV R1, R2", 11),
+        ("MOV R1, (R2)", 33),
+        ("MOV (R1)+, -(R2)", 41),
+        ("MOV @2(R1), @2(R2)", 73),
+        ("MOVB -(R1), (R2)+", 42),
+        ("CMP R1, (R2)", 30),
+        ("BIT @(R1)+, @-(R2)", 54),
+        ("ADD @(R1)+, 2(R2)", 58),
+        ("SUB R1, @(R2)+", 44),
+        ("MOV #1, R0", 24),
+        ("MOV @#2000, @#2002", 55),
+        ("INC (R2)", 29),
+        ("CLRB @(R2)+", 38),
+        ("TST (R2)", 24),
+        ("XOR R1, (R2)", 32),
+        ("MTPS (R2)", 30),
         ("BR .+2", 16),
-        ("SOB R0, .", 20),
-        ("JSR PC, @#2000", 40),
-        ("EMT 0", 68),
-        ("JMP R0", 68),
-        (".WORD 070000", 144),
+        ("SOB R0, .", 21),
+        ("JMP (R1)", 22),
+        ("JMP @#2000", 30),
+        ("JSR PC, @#2000", 39),
+        ("JSR PC, @2(R1)", 48),
+        // 63 after an instruction whose end overlaps the fetch, as measured.
+        ("EMT 0", 64),
+        // A write nobody answers: the bus timeout, then the trap to 4.
+        ("MOV R0, @#170000", 7 + 12 + 7 + 2 + 2 + 62 + 7 + 50),
     ];
     for &(src, expected) in cases {
         let (mut cpu, mut bus, _) = setup(src);
+        bus.wait = 3;
         bus.set_word(0o2000, 0o2000);
+        bus.set_word(0o2002, 0o2000);
+        cpu.r[0] = 1;
         cpu.r[1] = 0o2000;
+        cpu.r[2] = 0o2004;
         // Vectors point at a NOP so trap entry succeeds.
         for v in [0o4, 0o10, 0o30] {
             bus.set_word(v, 0o3000);

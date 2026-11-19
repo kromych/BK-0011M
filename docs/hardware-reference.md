@@ -92,25 +92,40 @@ Interrupts are **not** checked after `RTT` when it sets the T bit.
 
 ### Timing
 
-bkbtl models instruction time in CPU clocks with per-addressing-mode tables
-(source/destination modes 0–7); e.g. register-register op = 12 clocks,
-branch = 16, `SOB` = 20, `EMT`/`TRAP` = 68, `RTI` = 40, `WAIT`/`RESET` = 1140.
-Accurate timing matters for tape I/O loops, sound, and many games.
+An instruction's time is its bus cycles' and the gaps between them. Each
+cycle waits for its device's reply, then runs 4 more clocks; the gaps are
+fixed by the microcode (e.g. 4 clocks from a register operation's fetch to
+the next fetch, 9 for a branch, 14 for `SOB`). Measured on the MiST core's
+chip-level VM1 for every instruction and addressing mode
+(`tools/vm1-timing`); the emulator's CPU follows that schedule cycle by
+cycle and reproduces every bus cycle of the measurements
+(`crates/vm1/tests/bus_cycles.rs`). Accurate timing matters for tape I/O
+loops, sound, and many games.
 
-These tables are the BK-0010's: they match the MiST core's chip-accurate
-VM1 with its model of the 037 memory controller, for code in RAM
-(`tools/vm1-timing`). They include about 4 clocks of memory wait per
-access (one 037 slot at 3 MHz). On the BK-0011M the 037 still runs at
-6 MHz while the CPU runs at 4 MHz, so each RAM/ROM access costs about 2
-clocks more; the emulator adds `BK0011M_ACCESS_WAIT` = 2 (664 clocks
-against MiST's 675 over the test set). In real time the BK-0011M is about
-15% faster than the BK-0010, not 33%, which matches the bin2wav-cli note
-that the BK-0011 reads tapes "about 17% faster". With these waits the
-BK-0010 monitor's tape loop writes 176 µs half-periods, close to real
-recordings (§5). Not modeled: the alignment of each access to the 037's
-slots (the wait is averaged per access), and whether ROM accesses are
-paced (MiST says not; the emulator paces them like RAM, as bkbtl's tables
-imply).
+The replies:
+
+- **RAM** goes through the 037 memory controller, which shares it with the
+  screen: the CPU gets one slot per 8 phases of a 6 MHz clock. The delay
+  depends on the strobe's clock: 4, 3, 6, 5 repeating on the BK-0010
+  (3 MHz), 16 clocks of 2 to 8 on the BK-0011M (4 MHz), from the MiST
+  core's model of the 037. A NOP from RAM takes 12 clocks on the BK-0010
+  (bkbtl's tables, measured on real machines, are these RAM times) and
+  16 on the BK-0011M, so the BK-0011M is only about 15% faster in real
+  time, as the bin2wav-cli note that the BK-0011 reads tapes "about 17%
+  faster" says.
+- **ROM and I/O registers** reply in 2 clocks (MiST answers at once; the
+  ROMs are separate chips on the bus). At 0 or 3 clocks the chip model
+  fails to load Ferrari, a protected tape whose loader works at the
+  tape's limit; at 2 it loads, and the monitor's tape loop writes 164 µs
+  pilot half-periods, against 166 µs on real cassettes (§5).
+- **SEL1, SEL2 and the CPU's timer** (177700–177717) answer inside the
+  CPU.
+- On the BK-0011M writes are held 2 clocks longer before the strobe.
+
+Devices are brought up to the clock of each bus cycle before it happens,
+so the tape level, the timer and the floppy controller are read at the
+exact clock of the access. `WAIT` and `RESET` take bkbtl's 1140 clocks
+(not measured).
 
 ---
 
@@ -251,8 +266,8 @@ Unknown I/O address → bus timeout (vector 4).
 - Real recordings agree with the emulated timing. Of ten cassette
   recordings sampled from archive.pdp-11.org.ru (TAPES/another_tapes),
   three BK-0010.01 game collections are in the standard format, with pilot
-  half-periods of 166 µs against the emulator's 176 µs (6%, within
-  cassette speed variation); five use turbo loaders (about 95 µs). Through
+  half-periods of 166 µs against the emulator's 164 µs (within cassette
+  speed variation); five use turbo loaders (about 95 µs). Through
   the ROM the emulator decodes their headers exactly, and the same file
   from two recordings decodes identically until the recordings' dropouts,
   where the ROM rejects the checksum. No complete file has loaded from

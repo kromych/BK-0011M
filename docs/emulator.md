@@ -497,13 +497,15 @@ printf 'm 60 2\nu 101136 4\n' | bk --bk0010 --frames 200 --debug
   games, tapes, disks, save states, the debugger, and seeded stress tests
   (`BK_STRESS=N` makes them bigger). Tests that need the ROMs or software
   skip themselves when the files are missing.
-- `tools/vm1-timing` measures instruction timing on the MiST FPGA core's
-  chip-level model of the CPU, under Verilator.
+- `tools/vm1-timing` measures the CPU's bus cycles on the MiST FPGA core's
+  chip-level model of the CPU, under Verilator; its logs are what the
+  emulator's CPU timing is tested against.
 
 ## What is and isn't emulated
 
 Emulated: the K1801VM1 CPU with its traps and interrupt order and its timer,
-instruction timing (per-access memory waits on the BK-0011M), the keyboard,
+its timing bus cycle by bus cycle (with the memory controller's slots and
+the devices clocked to each access), the keyboard,
 the screen (both monitors, scrolling, the BK-0011M's palettes and two screen
 pages), the BK-0011M's memory paging and 50 Hz interrupt (and, with
 `--irq2-50hz`, a BK-0010 one), the speaker, the tape interface in both
@@ -512,5 +514,7 @@ directions, the floppy controller on both models at the level of raw tracks
 parallel port the AY-3-8910, Covox, a joystick and a printer.
 
 Not emulated: the ИРПС serial registers of the school model (BK-0010Ш),
-the mouse on the parallel port, and the analog imperfections of a TV. Instruction
-timing is accurate to within a few percent, averaged per memory access.
+the mouse on the parallel port, and the analog imperfections of a TV. The
+CPU's timing reproduces the chip-level model's bus cycles exactly; how fast
+the real ROMs reply (2 clocks here) is inferred from protected tapes, not
+measured.

@@ -135,6 +135,18 @@ int main(int argc, char** argv) {
                     if (!(top->pin_wtbt & 3)) { mem[a] = top->pin_dout & 0xff; mem[a + 1] = top->pin_dout >> 8; }
                 }
             }
+            // RLOG=addr: print the registers whenever the CPU reads addr.
+            if (ack && top->pin_din_stb_out && !top->pin_sel && getenv("RLOG")
+                && a == (uint16_t)strtoul(getenv("RLOG"), nullptr, 8)) {
+                static uint64_t last = 0;
+                if (cpu_clocks - last > 4) {
+                    last = cpu_clocks;
+                    auto& g = top->rootp->vm1_se__DOT__core__DOT__vreg_ff__DOT__gpr;
+                    printf("r %llu", (unsigned long long)cpu_clocks);
+                    for (int i = 0; i < 8; i++) printf(" %06o", g[i]);
+                    printf("\n");
+                }
+            }
             if (ack && top->pin_din_stb_out && !top->pin_sel) {
                 if ((long)a == evnt_at) top->pin_irq |= 2;
                 if (a == 0100 && evnt_at >= 0) top->pin_irq &= ~2;
@@ -150,6 +162,28 @@ int main(int argc, char** argv) {
                 }
             }
             if (cpu_clocks % 30000000 == 0 && cpu_clocks) fprintf(stderr, "%llu clocks\n", (unsigned long long)cpu_clocks);
+        }
+        // BUSLOG=from:to (CPU clocks): one line per bus cycle in that span:
+        // start (SYNC up), address, R/W/M (read-modify-write) or S (a SEL
+        // cycle), the first data strobe, the reply, and the end (SYNC down).
+        if (getenv("BUSLOG") && ce_bus) {
+            static uint64_t bfrom = 0, bto = 0, start = 0, strobe = 0, reply = 0;
+            static bool in = false, rd = false, wr = false, sel = false; static unsigned addr = 0;
+            if (!bto) sscanf(getenv("BUSLOG"), "%llu:%llu", (unsigned long long*)&bfrom, (unsigned long long*)&bto);
+            if (top->pin_sync && !in) { in = true; start = cpu_clocks; addr = top->pin_addr; rd = wr = false; strobe = reply = 0; sel = false; }
+            if (in) {
+                if (top->pin_sel) sel = true;
+                if (top->pin_din_stb_out && !rd) { rd = true; if (!strobe) strobe = cpu_clocks; }
+                if (top->pin_dout_stb_out && !wr) { wr = true; if (!strobe) strobe = cpu_clocks; }
+                if (top->pin_rply && !reply) reply = cpu_clocks;
+            }
+            if (!top->pin_sync && in) {
+                in = false;
+                if (start >= bfrom && start < bto)
+                    printf("b %llu %06o %c %llu %llu %llu\n", (unsigned long long)start, addr,
+                        sel ? 'S' : rd && wr ? 'M' : wr ? 'W' : 'R',
+                        (unsigned long long)strobe, (unsigned long long)reply, (unsigned long long)cpu_clocks);
+            }
         }
         // WRITES=from:to (CPU clocks): log every write in that span.
         if (getenv("WRITES") && ce_bus && top->pin_dout_stb_out && top->pin_sync) {

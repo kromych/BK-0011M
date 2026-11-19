@@ -48,8 +48,8 @@ fn run_program(model: Model, src: &str) -> Option<(Machine, bk::vm1::asm::Progra
 }
 
 /// A square wave from a known instruction loop must come out at the pitch
-/// the instruction timings give: this checks the CPU clock, the timing
-/// tables and the audio resampler together.
+/// the chip gives: this checks the CPU clock, the bus-cycle timing and the
+/// audio resampler together.
 #[test]
 fn speaker_pitch_matches_instruction_timing() {
     const N: u32 = 100;
@@ -74,8 +74,10 @@ fn speaker_pitch_matches_instruction_timing() {
         .windows(2)
         .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
         .count() as f64;
-    // MOV #,(R1) 40 + MOV #,R0 28 + SOB 20N + CLR (R1) 32 + MOV #,R0 28 + SOB 20N + BR 16
-    let period = f64::from(144 + 40 * N);
+    // The chip-level CPU with MiST's memory timing runs this loop (from
+    // RAM, N = 100) in 2053 + 2079 clocks between its writes to 177716
+    // (tools/vm1-timing): 20 per SOB, 132 for the rest.
+    let period = f64::from(132 + 40 * N);
     let expected = 3_000_000.0 / period;
     assert!(
         (rising - expected).abs() <= 2.0,

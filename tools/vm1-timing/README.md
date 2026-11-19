@@ -1,8 +1,11 @@
-# VM1 instruction timing from a chip-accurate model
+# VM1 timing from a chip-accurate model
 
-Measures K1801VM1 instruction timings by running the reverse-engineered CPU
-model from the MiST FPGA BK0011M core (GPL, not included here) under
-Verilator, against memory that replies after a chosen number of CPU clocks.
+Measures K1801VM1 timing by running the reverse-engineered CPU model from
+the MiST FPGA BK0011M core (GPL, not included here) under Verilator, against
+memory that replies after a chosen number of CPU clocks, or paced as the
+core's model of the 037 memory controller paces it. The emulator's CPU
+(`crates/vm1/src/timing.rs`, `cpu.rs`) follows what it shows bus cycle by
+bus cycle; `buslogs/` holds the evidence, which a test replays.
 
     git clone --depth 1 https://github.com/sorgelig/BK0011M mist
     python3 patch_plm.py mist/VM1/vm1_plm.v vm1_plm_fixed.v
@@ -26,8 +29,9 @@ Verilator, against memory that replies after a chosen number of CPU clocks.
 
 With `MIST=1`, RAM below 100000 is paced the way the MiST core paces it:
 a model of the 037 memory controller gives the CPU one slot per 8 phases
-of a 6 MHz clock; ROM and I/O reply at once. Assemble the program into RAM
-(the harness puts a jump to it at the 100000 start address):
+of a 6 MHz clock; ROM and I/O reply after the WAIT argument (0 if none).
+Assemble the program into RAM (the harness puts a jump to it at the 100000
+start address):
 
     cargo run -p vm1 --example asm -- timing.mac 4000 timing_ram.bin
     MIST=1 ./obj_dir/tb timing_ram.bin 32 1     # BK-0010: 3 MHz, write delay 1
@@ -36,7 +40,7 @@ of a 6 MHz clock; ROM and I/O reply at once. Assemble the program into RAM
 `tb` prints the CPU-clock count of every write to 177000; per-instruction
 clocks are (block time - empty block time) / 100.
 
-Results (2026-11-18), CPU clocks:
+Results, CPU clocks:
 
 | Instruction | wait 0 | wait 4 | bkbtl tables |
 |---|---|---|---|
@@ -64,12 +68,66 @@ With the MiST memory model and code in RAM (`MIST=1`), CPU clocks:
 | SOB | 20 | 21 | 20 |
 | sum of 23 tests | 584 | 675 | 580 |
 
-The BK-0010 column matches bkbtl's tables on 20 of 23 instructions (the
-others within one memory slot). The BK-0011M needs about 16% more clocks:
-the 037 still runs at 6 MHz while the CPU runs at 4 MHz, and writes are
-delayed longer, so the BK-0011M is only about 15% faster than the BK-0010
-in real time. The emulator adds 2 clocks per RAM/ROM access on the
-BK-0011M (`BK0011M_ACCESS_WAIT`), which gives 664 against 675.
+The BK-0011M needs about 16% more clocks: the 037 still runs at 6 MHz
+while the CPU runs at 4 MHz, and writes are held longer, so the BK-0011M is
+only about 15% faster than the BK-0010 in real time. The emulator gives
+584.00 and 674.29 (`crates/bk/tests/timing.rs` runs the same program on
+the whole machine; the chip's hundredths come from its probe writes).
+
+Run the BK-0011M at `SCALE=1`, 2 or 4, not 8: at 3 system clocks per CPU
+clock the 037 model's phases fall differently and RAM replies come too
+early (a NOP from RAM takes 10.7 clocks instead of 16). The BK-0010 gives
+the same results at every scale.
+
+## Bus cycles
+
+`BUSLOG=from:to` prints one line per bus cycle whose SYNC rises between
+those CPU clocks: `b start address kind strobe reply end`, kind R, W, M
+(read-modify-write) or S (SEL1/SEL2, which answer inside the CPU; reply 0).
+A write's strobe is the CPU's, before the harness's DOUT_DELAY.
+`RLOG=addr` prints the registers whenever the CPU reads `addr`.
+
+`gen_programs.py` writes programs that run every instruction in every
+addressing mode after the same setup and a NOP (single, doubleA, doubleB,
+psw, pc), the jumps, returns, traps and bus errors (flow), each instruction
+after a register operation and after a memory write (ovl), and the SEL and
+timer registers (io). Logged on the chip with replies of 1 to 5 clocks,
+with the BK-0011M's clocking, and with the 037 model on both machines,
+they give the schedule in `crates/vm1/src/timing.rs`:
+
+- A cycle runs 4 clocks after its reply; a read-modify-write turns 5
+  clocks after the read's reply; a cycle nobody answers ends 62 clocks
+  after the CPU's strobe. The gaps between cycles don't depend on the
+  reply delay.
+- After an instruction that doesn't end with the register-operation tail
+  (a memory destination, a jump, branch, return or trap), the next opcode
+  fetch overlaps its end: the next instruction's first gap is a clock
+  shorter, whatever it is.
+- MTPS from a register fetches the next opcode, throws it away and fetches
+  it again 12 clocks after the first fetch's strobe.
+- After MOVB or MFPS into a register, which sign-extend, the next
+  instruction proceeds as if its fetch's reply took at least 3 clocks.
+- JSR's next fetch comes at least 9 clocks after its push's strobe.
+- The first instruction after reset runs a clock faster (the harness
+  enters the programs with a JMP, so it isn't measured).
+- With an instant reply some gaps are a clock longer; nothing on the BK
+  replies at once, so the emulator doesn't model it.
+
+The 037 model's reply delay to a RAM strobe depends only on the strobe's
+CPU clock: 4, 3, 6, 5 repeating on the BK-0010, and 5 4 3 7 6 5 4 3 8 7 6
+5 4 3 7 6 (every 16 clocks, 3 slots) on the BK-0011M, on every RAM cycle
+of the logs (`crates/bk/src/board.rs`).
+
+`buslogs/` keeps 20 of these logs in a compact form (`compact_buslog.py`),
+with the programs; `crates/vm1/tests/bus_cycles.rs` runs each program on
+the emulator's CPU with a bus that answers as the harness did and requires
+every cycle's gap, length and reply to match. To add one:
+
+    python3 gen_programs.py
+    cargo run -p vm1 --example asm -- pc.mac 1000 pc.bin
+    MIST=1 BUSLOG=220000:2000000 MAXCLK=2000000 ./obj_dir/tb pc.bin 24 3 \
+        | grep '^b ' > pc-bk11.log
+    python3 compact_buslog.py pc-bk11.log pc.bin bk11 0 buslogs/pc-bk11.txt.gz
 
 ## Trap and interrupt order
 
@@ -142,17 +200,23 @@ card. The tape input here is the harness's, not the core's.
 
 `WRITES=from:to` logs every write the CPU makes between those CPU clocks.
 
-Results (2026-11-18):
+The fourth argument (WAIT) sets how long ROM and I/O take to reply; MiST
+answers at once, the real BK's ROMs don't. Results:
 
 - A standard tape (600 random bytes written by `--bin2wav`) loads on the
   chip model byte for byte, with a good checksum: the tape input works.
-- Ferrari (software/tapes/protected) fails on the chip model, earlier than
-  in the emulator. Its file overwrites the ROM's store step (cell 304) as
-  it loads, so that a store lands in ROM and the bus error starts its
-  loader through vector 4. The chip model reads the file's bytes correctly
-  up to that point, then reads the 1 bits of bytes 306-307 as 0, though
-  they are recorded exactly as every earlier 1 bit (decoded directly from
-  the recording), and never takes the bus error. The emulator reads them
-  right and starts the loader, then fails in the loader's second stage
-  (see issue #11). Neither matches the real machine these recordings were
-  tuned on.
+- Ferrari (software/tapes/protected), whose loader reads at the fastest
+  speed the tape allows, decides the ROM's reply delay. Its file
+  overwrites the ROM's store step (cell 304) as it loads, so that a store
+  lands in ROM and the bus error starts its loader through vector 4. With
+  ROM and I/O replying at once the chip reads the 1 bits of bytes 306-307
+  as 0 and never takes the bus error; with 3 clocks it fails too; with 2
+  clocks it loads completely, to the game's title.
+- With 2 clocks Expert loads, Hobbit stops at its "PROTECTION BY TOKEN
+  CORP." screen, and Soldier's loader never finishes. The emulator, whose
+  ROM and I/O reply in 2 clocks, does exactly the same on all four. With
+  that timing the BK-0010 monitor writes 164 µs pilot half-periods, and
+  real BK-0010.01 cassettes have 166 µs (docs/hardware-reference.md §5).
+- An MP3 that the emulator's encoder made before its pulses were all whole
+  samples (pilot halves alternating 7 and 8 samples) doesn't load on the
+  chip model, nor in the emulator; re-encoded, it loads in both.

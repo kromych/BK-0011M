@@ -10,25 +10,27 @@
 
 use crate::bin::BinFile;
 use crate::roms::{Model, Roms};
-use crate::tape::TapeSignal;
+use crate::tape::{RECORD_RATE, TapeSignal};
 use crate::{Config, Machine};
 
 /// The BK-0010's CPU clock, which the pulse lengths below are counted in.
 const CPU_HZ: u32 = 3_000_000;
 
-// Half-periods in CPU clocks, from the instruction timings of the monitor
-// ROM's tape loops (116404–116620). Each pulse is a high half, then a low
-// half.
-/// Pilot pulse: 23 and 22 SOB iterations plus the loop's other instructions.
-const PILOT: (u32, u32) = (528, 528);
+// Half-periods in CPU clocks, as the monitor ROM's tape loops
+// (116404–116620) write them on the emulated BK-0010. Each pulse is a high
+// half, then a low half. (The ROM's low halves of 0s and tails alternate
+// between 505 and 515 clocks, and run longer at byte boundaries; the reader
+// doesn't mind.)
+/// Pilot pulse.
+const PILOT: (u32, u32) = (491, 491);
 /// The long synchronization pulse after a pilot.
-const SYNC: (u32, u32) = (2168, 2140);
+const SYNC: (u32, u32) = (2049, 2021);
 /// A data pulse for a 1 bit (twice a 0's).
-const ONE: (u32, u32) = (1088, 1088);
+const ONE: (u32, u32) = (1023, 1023);
 /// A data pulse for a 0 bit.
-const ZERO: (u32, u32) = (548, 544);
+const ZERO: (u32, u32) = (510, 510);
 /// The pulse that follows every bit's data pulse.
-const TAIL: (u32, u32) = (548, 556);
+const TAIL: (u32, u32) = (510, 510);
 
 /// Pilot pulses before the header, before the data, and after the file.
 const LEADER_PULSES: u32 = 4096;
@@ -38,14 +40,25 @@ const TRAILER_PULSES: u32 = 256;
 /// Silence before and after the file, in CPU clocks (0.25 s).
 const SILENCE: u32 = CPU_HZ / 4;
 
+/// Builds a recording at [`RECORD_RATE`], every half-period a whole number
+/// of samples: pulses of one kind all the same length, as the ROM writes
+/// them. (Carrying the fractions over would make a pilot of 7.2-sample
+/// halves alternate between 7 and 8 samples, a jitter the ROM's pilot
+/// search can reject.)
 struct Encoder {
-    tape: TapeSignal,
+    levels: Vec<bool>,
 }
 
 impl Encoder {
+    fn half(&mut self, clocks: u32, level: bool) {
+        let rate = u64::from(RECORD_RATE);
+        let n = (u64::from(clocks) * rate + u64::from(CPU_HZ) / 2) / u64::from(CPU_HZ);
+        self.levels.extend(std::iter::repeat_n(level, n as usize));
+    }
+
     fn pulse(&mut self, (high, low): (u32, u32)) {
-        self.tape.record(high, CPU_HZ, true);
-        self.tape.record(low, CPU_HZ, false);
+        self.half(high, true);
+        self.half(low, false);
     }
 
     /// A run of pilot pulses, the sync pulse and a 1 bit (116404–116472).
@@ -98,10 +111,8 @@ pub fn encode_tape(name: &str, file: &BinFile) -> Result<TapeSignal, String> {
     header.extend(len.to_le_bytes());
     header.extend(&name_bytes[..16]);
 
-    let mut e = Encoder {
-        tape: TapeSignal::default(),
-    };
-    e.tape.record(SILENCE, CPU_HZ, false);
+    let mut e = Encoder { levels: Vec::new() };
+    e.half(SILENCE, false);
     e.pilot(LEADER_PULSES);
     e.pilot(SHORT_PILOT);
     e.bytes(&header);
@@ -109,10 +120,8 @@ pub fn encode_tape(name: &str, file: &BinFile) -> Result<TapeSignal, String> {
     e.bytes(&file.data);
     e.bytes(&checksum(&file.data).to_le_bytes());
     e.pilot(TRAILER_PULSES);
-    e.tape.record(SILENCE, CPU_HZ, false);
-    // Recording moved the tape to its end; wind it back to play it.
-    e.tape.rewind();
-    Ok(e.tape)
+    e.half(SILENCE, false);
+    Ok(TapeSignal::from_levels(RECORD_RATE, e.levels))
 }
 
 /// A file read from a recording.

@@ -61,8 +61,21 @@ pub struct Board {
     pub ay: Option<Ay>,
     /// The floppy controller, when fitted.
     pub fdc: Option<Fdc>,
-    /// Memory wait clocks owed by the instruction being executed.
-    waits: u32,
+    /// The CPU clock the devices have been brought up to.
+    pub clock: u64,
+    /// The CPU clock the current CPU step began at ([`vm1::Bus::cycle`]
+    /// gives times within the step).
+    pub step_start: u64,
+    /// Clocks ROM takes to reply to a read.
+    pub rom_wait: u32,
+    /// Clocks an external I/O register (keyboard, scroll, floppy
+    /// controller) takes to reply. The CPU's own registers and SEL1/SEL2
+    /// (177700-177717) answer inside the CPU.
+    pub io_wait: u32,
+    /// The tape in the recorder, and the recording being made: they move
+    /// while the motor runs, on the CPU's clock.
+    pub tape_in: Option<crate::tape::TapeSignal>,
+    pub recording: Option<crate::tape::TapeSignal>,
     /// BK-0010: the frame pulse is wired to IRQ2, giving a 50 Hz interrupt
     /// on vector 100 as the BK-0011M has.
     pub irq2_50hz: bool,
@@ -107,14 +120,18 @@ impl Printer {
     }
 }
 
-/// Extra CPU clocks per RAM/ROM access on the BK-0011M, on top of the
-/// instruction timing tables. The tables match the BK-0010 (3 MHz), where
-/// the 037 memory controller's 6 MHz slots come every 4 CPU clocks; at
-/// 4 MHz they come every 5.33, and writes are held 3 clocks instead of 1.
-/// Fitted to the MiST core's chip-accurate CPU and 037 model running from
-/// RAM (tools/vm1-timing): 664 clocks against MiST's 674 over 23 test
-/// instructions, worst case 6.
-pub const BK0011M_ACCESS_WAIT: u32 = 2;
+/// The 037 memory controller's reply delay for a RAM access, by the CPU
+/// clock of its strobe (the 037's slots repeat every 4 CPU clocks on the
+/// BK-0010 and every 16 on the BK-0011M, where the CPU runs at 4 MHz and the
+/// 037 still at 6). From the MiST core's model of the 037 (memory.sv); the
+/// chip-level CPU run with it (tools/vm1-timing, `MIST=1 SCALE=1`) shows
+/// exactly these delays on all of its RAM cycles.
+const RAM_WAIT_BK0010: [u32; 4] = [4, 3, 6, 5];
+const RAM_WAIT_BK0011M: [u32; 16] = [5, 4, 3, 7, 6, 5, 4, 3, 8, 7, 6, 5, 4, 3, 7, 6];
+
+/// Default reply delays of ROM and external I/O: see [`Board::rom_wait`].
+pub const ROM_WAIT: u32 = 2;
+pub const IO_WAIT: u32 = 2;
 
 impl Board {
     pub fn new(mem: Memory) -> Self {
@@ -133,7 +150,12 @@ impl Board {
             serial: None,
             ay: None,
             fdc: None,
-            waits: 0,
+            clock: 0,
+            step_start: 0,
+            rom_wait: ROM_WAIT,
+            io_wait: IO_WAIT,
+            tape_in: None,
+            recording: None,
             irq2_50hz: false,
             watch: Vec::new(),
             watch_hit: None,
@@ -163,8 +185,9 @@ impl Board {
         self.scroll = 0o1330;
         self.port_in = 0;
         self.port_out = 0;
-        self.waits = 0;
         self.watch_hit = None;
+        self.clock = 0;
+        self.step_start = 0;
     }
 
     /// Advance devices by `cycles` CPU clocks.
@@ -186,15 +209,36 @@ impl Board {
         self.mem.model() == Model::Bk0011m
     }
 
-    /// Memory wait clocks owed since the last call.
-    pub fn take_waits(&mut self) -> u32 {
-        std::mem::take(&mut self.waits)
+    /// Bring the devices up to CPU clock `to`: the timer, the floppy
+    /// controller, the AY, and the tape (playing or recording while the
+    /// motor runs).
+    pub fn catch_up(&mut self, to: u64) {
+        if to <= self.clock {
+            return;
+        }
+        let n = (to - self.clock) as u32;
+        self.clock = to;
+        self.tick(n);
+        if self.motor_on() {
+            let hz = crate::cpu_hz(self.mem.model());
+            if let Some(tape) = &mut self.tape_in
+                && let Some(level) = tape.play(n, hz)
+            {
+                self.set_tape_input(level);
+            }
+            let speaker = self.speaker();
+            if let Some(rec) = &mut self.recording {
+                rec.record(n, hz, speaker);
+            }
+        }
     }
 
-    /// Count a memory (RAM or ROM) access for wait states.
-    fn memory_access(&mut self) {
+    /// The reply delay of a RAM access whose strobe comes at CPU clock `t`.
+    fn ram_wait(&self, t: u64) -> u32 {
         if self.is_bk0011m() {
-            self.waits += BK0011M_ACCESS_WAIT;
+            RAM_WAIT_BK0011M[(t % 16) as usize]
+        } else {
+            RAM_WAIT_BK0010[(t % 4) as usize]
         }
     }
 
@@ -397,16 +441,23 @@ impl Board {
 }
 
 impl Bus for Board {
+    fn cycle(&mut self, at: u32, addr: u16, _kind: vm1::Cycle) -> u32 {
+        let t = self.step_start + u64::from(at);
+        self.catch_up(t);
+        match self.mem.translate(addr) {
+            Region::Ram(_) => self.ram_wait(t),
+            Region::Rom(..) => self.rom_wait,
+            // SEL1, SEL2 and the CPU's own registers answer inside the CPU.
+            Region::Io if addr & !1 >= 0o177700 => 0,
+            Region::Io => self.io_wait,
+            Region::None => 0,
+        }
+    }
+
     fn read_word(&mut self, addr: u16) -> Result<u16, BusError> {
         match self.mem.translate(addr) {
-            Region::Ram(o) => {
-                self.memory_access();
-                Ok(self.mem.ram_word(o))
-            }
-            Region::Rom(..) => {
-                self.memory_access();
-                Ok(self.mem.peek_word(addr).expect("ROM is readable"))
-            }
+            Region::Ram(o) => Ok(self.mem.ram_word(o)),
+            Region::Rom(..) => Ok(self.mem.peek_word(addr).expect("ROM is readable")),
             Region::Io => self.io_read(addr),
             Region::None => Err(BusError),
         }
@@ -418,7 +469,6 @@ impl Bus for Board {
         }
         match self.mem.translate(addr) {
             Region::Ram(o) => {
-                self.memory_access();
                 self.mem.set_ram_word(o, value);
                 Ok(())
             }
@@ -429,14 +479,8 @@ impl Bus for Board {
 
     fn read_byte(&mut self, addr: u16) -> Result<u8, BusError> {
         match self.mem.translate(addr) {
-            Region::Ram(o) => {
-                self.memory_access();
-                Ok(self.mem.ram[o])
-            }
-            Region::Rom(r, o) => {
-                self.memory_access();
-                Ok(self.mem.rom_byte(r, o))
-            }
+            Region::Ram(o) => Ok(self.mem.ram[o]),
+            Region::Rom(r, o) => Ok(self.mem.rom_byte(r, o)),
             Region::Io => {
                 let word = self.io_read(addr & !1)?;
                 Ok(if addr & 1 != 0 {
@@ -455,7 +499,6 @@ impl Bus for Board {
         }
         match self.mem.translate(addr) {
             Region::Ram(o) => {
-                self.memory_access();
                 self.mem.ram[o] = value;
                 Ok(())
             }
@@ -483,6 +526,8 @@ impl Board {
         self.kbd.save(w);
         self.timer.save(w);
         w.u32(self.timer_clock);
+        // The memory controller's slots run on this clock.
+        w.u64(self.clock);
         for v in [
             self.sel1,
             self.tape_latch,
@@ -518,6 +563,7 @@ impl Board {
         if self.timer_clock >= TIMER_CLOCK_DIVIDER {
             return Err("save state is corrupt (timer clock)".into());
         }
+        self.clock = r.u64()?;
         for v in [
             &mut self.sel1,
             &mut self.tape_latch,
@@ -541,7 +587,6 @@ impl Board {
         if let Some(fdc) = &mut self.fdc {
             fdc.load(r)?;
         }
-        self.waits = 0;
         Ok(())
     }
 }

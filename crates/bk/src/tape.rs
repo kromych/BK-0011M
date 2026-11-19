@@ -56,6 +56,15 @@ impl TapeSignal {
         }
     }
 
+    /// A signal of `levels`, one per sample at `rate`, at its start.
+    pub(crate) fn from_levels(rate: u32, levels: Vec<bool>) -> TapeSignal {
+        TapeSignal {
+            rate,
+            levels,
+            clocks: 0,
+        }
+    }
+
     pub fn to_wav(&self) -> Wav {
         Wav {
             rate: self.rate,

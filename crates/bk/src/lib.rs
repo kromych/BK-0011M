@@ -121,8 +121,6 @@ pub struct Machine {
     held_keys: Vec<u8>,
     cpu_hz: u32,
     audio: Audio,
-    tape_in: Option<TapeSignal>,
-    recording: Option<TapeSignal>,
     files: Option<Box<dyn TapeFiles>>,
     /// Entry of the ROM's tape routine, where fast tape steps in.
     tape_hook: Option<u16>,
@@ -136,8 +134,6 @@ impl Machine {
         let mut machine = Machine {
             cpu_hz: hz,
             audio: Audio::new(hz, AUDIO_RATE),
-            tape_in: None,
-            recording: None,
             files: None,
             tape_hook: None,
             frame_cycles,
@@ -154,6 +150,11 @@ impl Machine {
         };
         if config.fdd {
             machine.board.fdc = Some(fdc::Fdc::new(hz));
+        }
+        // The BK-0011M holds write strobes 2 clocks longer (as the MiST
+        // core's chip-level CPU shows with its clocking).
+        if machine.model() == Model::Bk0011m {
+            machine.cpu.write_delay = 2;
         }
         if config.ay {
             machine.board.ay = Some(ay::Ay::new());
@@ -309,13 +310,17 @@ impl Machine {
                 trace.push(entry);
             }
         }
-        let speaker = self.board.speaker();
         let speaker_level = self.board.speaker_level();
         let covox = if self.config.covox {
             f32::from(self.board.port_out as u8) / 255.0
         } else {
             0.0
         };
+        // The CPU and every device run on one clock: the CPU reports each
+        // bus cycle's time within the step (Bus::cycle), and the board brings
+        // its devices, the tape among them, up to that moment first.
+        let start = self.board.clock;
+        self.board.step_start = start;
         let cycles = if self.files.is_some()
             && Some(self.cpu.pc()) == self.tape_hook
             && !self.cpu.is_waiting()
@@ -325,23 +330,13 @@ impl Machine {
         } else {
             self.cpu.step(&mut self.board)
         };
-        let cycles = cycles + self.board.take_waits();
-        self.board.tick(cycles);
+        self.board.catch_up(start + u64::from(cycles));
         self.frame_clock += cycles;
-        // The level during the instruction is the one before it; a change
-        // takes effect from the next instruction.
+        // The sound level during the instruction is the one before it; a
+        // change takes effect from the next instruction (a fraction of an
+        // audio sample).
         let ay = self.board.ay.as_ref().map_or(0.0, ay::Ay::output);
         self.audio.advance(cycles, speaker_level + covox + ay);
-        if self.board.motor_on() {
-            if let Some(tape) = &mut self.tape_in
-                && let Some(level) = tape.play(cycles, self.cpu_hz)
-            {
-                self.board.set_tape_input(level);
-            }
-            if let Some(rec) = &mut self.recording {
-                rec.record(cycles, self.cpu_hz, speaker);
-            }
-        }
         cycles
     }
 
@@ -361,16 +356,16 @@ impl Machine {
 
     /// Put a tape in the recorder; it plays while the BK runs the motor.
     pub fn insert_tape(&mut self, tape: Option<TapeSignal>) {
-        self.tape_in = tape;
+        self.board.tape_in = tape;
     }
 
     /// Start recording what the BK writes to tape (while the motor runs).
     pub fn start_recording(&mut self) {
-        self.recording = Some(TapeSignal::default());
+        self.board.recording = Some(TapeSignal::default());
     }
 
     pub fn take_recording(&mut self) -> Option<TapeSignal> {
-        self.recording.take()
+        self.board.recording.take()
     }
 
     /// Fast tape: when a program reads or writes a named file, use this
@@ -391,7 +386,14 @@ impl Machine {
         let c = self.cpu.state();
         c.r.iter().for_each(|&v| w.u16(v));
         w.u16(c.psw);
-        for flag in [c.waiting, c.halted, c.irq1, c.evnt] {
+        for flag in [
+            c.waiting,
+            c.halted,
+            c.irq1,
+            c.evnt,
+            c.overlap,
+            c.sign_extend,
+        ] {
             w.bool(flag);
         }
         self.board.save(&mut w);
@@ -399,8 +401,8 @@ impl Machine {
         w.bool(self.in_frame);
         w.u64(self.frames);
         w.bytes(&self.held_keys);
-        w.bool(self.tape_in.is_some());
-        w.u64(self.tape_in.as_ref().map_or(0, TapeSignal::position));
+        w.bool(self.board.tape_in.is_some());
+        w.u64(self.board.tape_in.as_ref().map_or(0, TapeSignal::position));
         w.bytes
     }
 
@@ -493,6 +495,8 @@ impl Machine {
             halted: r.bool()?,
             irq1: r.bool()?,
             evnt: r.bool()?,
+            overlap: r.bool()?,
+            sign_extend: r.bool()?,
         };
         let mut board = self.board.clone();
         board.load(&mut r)?;
@@ -514,7 +518,7 @@ impl Machine {
         self.in_frame = in_frame;
         self.frames = frames;
         self.held_keys = held_keys;
-        if had_tape && let Some(tape) = &mut self.tape_in {
+        if had_tape && let Some(tape) = &mut self.board.tape_in {
             tape.seek(tape_position);
         }
         Ok(())
@@ -605,25 +609,28 @@ impl Machine {
 
     /// How far the inserted tape has played, in CPU clocks.
     pub fn tape_position(&self) -> Option<u64> {
-        self.tape_in.as_ref().map(TapeSignal::position)
+        self.board.tape_in.as_ref().map(TapeSignal::position)
     }
 
     /// Wind the inserted tape to a position from [`Machine::tape_position`].
     pub fn seek_tape(&mut self, clocks: u64) {
-        if let Some(tape) = &mut self.tape_in {
+        if let Some(tape) = &mut self.board.tape_in {
             tape.seek(clocks);
         }
     }
 
     /// No tape, or the inserted one has played to its end.
     pub fn tape_ended(&self) -> bool {
-        self.tape_in.as_ref().is_none_or(|t| t.ended(self.cpu_hz))
+        self.board
+            .tape_in
+            .as_ref()
+            .is_none_or(|t| t.ended(self.cpu_hz))
     }
 
     /// The tape is moving with something to play or record: the motor runs
     /// and a recording is inserted that hasn't run out, or recording is on.
     pub fn tape_busy(&self) -> bool {
-        self.board.motor_on() && (self.recording.is_some() || !self.tape_ended())
+        self.board.motor_on() && (self.board.recording.is_some() || !self.tape_ended())
     }
 
     // ----- fast tape -----

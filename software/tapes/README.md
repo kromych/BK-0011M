@@ -38,7 +38,7 @@ directly.
 | `survey-6.mp3` | 18 | the loader, as `BARBARIAN` | `BARBARIAN`: as on set 2, `ОШИБКА` |
 | `survey-2.mp3` | — | nothing: the sample is silent for its first 40 seconds | — |
 | `survey-7.mp3` | — | no header, though the signal looks like the others' | — |
-| `survey-11.mp3` | — | no header: a weak, noisy signal | — |
+| `survey-11.mp3` | 9 | the advert, cut off after 2512 of its 7220 bytes: a weak, noisy signal | doesn't load |
 | `t3-005.mp3` | — | no header, on the BK-0010 or (with `L?`) the BK-0011M: its pulses are about 2.3 times as long as the other recordings', a format neither ROM reads | — |
 
 The loaders fail the ROM's checksum check. On set 2 the checksum word the

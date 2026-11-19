@@ -7,7 +7,7 @@
 //! layout changes.
 
 pub const MAGIC: &[u8; 8] = b"BKSTATE\0";
-pub const VERSION: u16 = 5;
+pub const VERSION: u16 = 6;
 
 #[derive(Default)]
 pub struct Writer {

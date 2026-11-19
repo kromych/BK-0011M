@@ -26,8 +26,9 @@ homebrew, on the BK-0011M and the BK-0010.01.
   the BK-0010.01 (monitor and BASIC) and the BK-0010 (monitor, FOCAL and the
   test ROM).
 - **The CPU**: every K1801VM1 instruction, its traps and interrupt order and
-  its timer, with instruction timing checked against a chip-level model of
-  the processor and the BK's memory controller.
+  its timer, timed bus cycle by bus cycle as a chip-level model of the
+  processor and the BK's memory controller does, with the tape and other
+  devices clocked to each access.
 - **Video**: the 512×256 mono and 256×256 four-color screen, hardware
   scrolling, the BK-0011M's 16 palettes and two screen pages; switchable
   color and mono monitors.
@@ -114,7 +115,7 @@ remaps the keys (`--keys`, `--write-keys`). `bk --help` lists every option;
 | `crates/romdis` | writes commented disassembly listings of the ROMs and of the programs in `software/`, on disks and tapes too |
 | `annotations/` | names and comments for the listings (system calls from the manuals) |
 | `tools/mkandos.py` | makes an ANDOS boot disk holding BK programs |
-| `tools/vm1-timing/` | measures instruction timing on the MiST FPGA core's chip-level VM1 model, under Verilator |
+| `tools/vm1-timing/` | measures the CPU's bus cycles on the MiST FPGA core's chip-level VM1 model, under Verilator |
 | `docs/` | the guides and the original manuals |
 | `roms/` | the ROM images (`mist/`: the MiST core's combined images); [roms/README.md](roms/README.md) says how to start each |
 | `software/` | programs, disk images (Saboteur 2, Miami Cobra, ANDOS, CSIDOS) and tape recordings for testing; [software/README.md](software/README.md) says how to start each |
