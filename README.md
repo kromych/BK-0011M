@@ -327,6 +327,12 @@ tapes need their own loader, and BKEmu's `.tap` tape format isn't read.
 - gid, for <https://gid.pdp-11.net>, the archive of BK documentation the
   original manuals in `docs/manuals/` come from, and for the BKEmu emulator,
   whose programs and disks are in `software/bkemu`.
+- The authors of the commented ROM disassemblies published there, whose
+  names and descriptions annotate the listings: Boris F. Frolkin (the
+  BK-0010 monitor, itself by M. I. Dyabin), Dale corporation of the Bryansk
+  BK club (the test ROM), the ПК БК article on disk ROM 326, and gid (the
+  disk ROMs 253 and 327, and BOS); and Wesha, who passed several of them
+  on.
 - @kalininskiy, for bk-catalog (<https://github.com/kalininskiy/bk-catalog>),
   and the keepers of <https://archive.pdp-11.org.ru>, for the games and
   cassette recordings the tests use.
