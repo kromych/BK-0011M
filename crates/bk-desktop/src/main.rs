@@ -717,6 +717,58 @@ const OUT_SCREEN_HEIGHT: usize = 3 * SCREEN_HEIGHT;
 /// The keyboard panel, drawn at its own size and doubled to match.
 const OUT_PANEL_HEIGHT: usize = 2 * panel::PANEL_HEIGHT;
 
+/// Keeps the emulator to the real clock: a 20 ms frame is due every 20 ms.
+/// The sound device has a clock of its own, so with sound the queue of
+/// samples waiting to be played trims the drift between the two.
+struct Pacer {
+    start: std::time::Instant,
+    frames: u64,
+}
+
+impl Pacer {
+    const FRAME_US: u128 = 20_000;
+    /// Sound queued ahead of the speaker: the margin against the window
+    /// pausing (dragged, covered) without a delay you'd hear.
+    const QUEUE_MS: u64 = 60;
+
+    fn new() -> Self {
+        let now = std::time::Instant::now();
+        // Start with the queue's worth of frames due, to fill it.
+        let ahead = std::time::Duration::from_millis(Self::QUEUE_MS);
+        Pacer {
+            start: now.checked_sub(ahead).unwrap_or(now),
+            frames: 0,
+        }
+    }
+
+    /// Frames due and not yet run. After a stall (the window dragged, the
+    /// computer busy) it starts afresh rather than racing to catch up.
+    fn due(&mut self) -> u64 {
+        let due = (self.start.elapsed().as_micros() / Self::FRAME_US) as u64;
+        if due > self.frames + 10 {
+            *self = Pacer::new();
+            return 1;
+        }
+        due.saturating_sub(self.frames)
+    }
+
+    fn ran(&mut self) {
+        self.frames += 1;
+    }
+
+    /// Nudge the clock to keep the sound queue near [`Pacer::QUEUE_MS`]:
+    /// a fraction of a millisecond per update, too little to hear.
+    fn trim(&mut self, queued: usize, rate: u32) {
+        let ms = queued as u64 * 1000 / u64::from(rate.max(1));
+        let step = std::time::Duration::from_micros(200);
+        if ms > 2 * Self::QUEUE_MS {
+            self.start += step;
+        } else if ms < Self::QUEUE_MS / 2 {
+            self.start = self.start.checked_sub(step).unwrap_or(self.start);
+        }
+    }
+}
+
 /// Render the screen into `out` at [`OUT_WIDTH`] x [`OUT_SCREEN_HEIGHT`].
 fn tv_frame(machine: &Machine, frame: &mut [u32], out: &mut Vec<u32>) {
     machine.render(frame);
@@ -1066,9 +1118,14 @@ fn run_window(
     } else {
         "Alt+V"
     };
-    let title = |m: Monitor, pasting: usize, fast: bool, machine: &Machine| {
+    let title = |m: Monitor, pasting: usize, fast: bool, machine: &Machine, no_sound: bool| {
         let monitor = if m == Monitor::Mono { "mono" } else { "color" };
         let fast = if fast { " — fast-forward" } else { "" };
+        let fast = if no_sound {
+            format!("{fast} — no sound")
+        } else {
+            fast.to_string()
+        };
         // The tape settings that differ from the start.
         let settings: Vec<&str> = [
             (machine.tape_sound(), "tape sound"),
@@ -1089,7 +1146,7 @@ fn run_window(
             format!("{model} ({monitor}){fast}{tape} — {paste_key} pastes text")
         }
     };
-    let mut shown_title = title(machine.monitor(), 0, false, machine);
+    let mut shown_title = title(machine.monitor(), 0, false, machine, false);
     // Fast-forward: switched by Alt+F, and on by itself while the tape
     // moves with something to play or record, unless the tape is to be
     // heard.
@@ -1122,9 +1179,12 @@ fn run_window(
         }
     };
     machine.take_audio(); // drop the sound of booting
-    // With sound, the audio clock sets the pace: keep about 70 ms queued.
-    window.set_target_fps(if sound.is_some() { 100 } else { 50 });
-    let queue_target = sound.as_ref().map_or(0, |s| s.rate as usize * 7 / 100);
+    let no_sound = sound.is_none() && !mute;
+    // The window updates up to 100 times a second; the pacer decides how
+    // many emulated frames each update runs.
+    window.set_target_fps(100);
+    let mut pacer = Pacer::new();
+    let mut was_fast = false;
 
     let mut frame = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT];
     let mut pixels = Vec::new();
@@ -1258,24 +1318,36 @@ fn run_window(
         if console.stopped {
             console.poll(machine);
         }
-        let fast = powered && (fast_forward || (machine.tape_busy() && !machine.tape_sound()));
+        let tape_fast = machine.tape_busy() && !machine.tape_sound();
+        let fast = powered && (fast_forward || tape_fast);
+        if fast != was_fast {
+            // Say why: fast-forward drops the sound and races the clock.
+            eprintln!(
+                "bk: fast-forward {}",
+                match (fast, fast_forward) {
+                    (false, _) => "off",
+                    (true, true) => "on (Alt+F)",
+                    (true, false) =>
+                        "on while the tape moves (Alt+T to hear it at its speed instead)",
+                }
+            );
+            was_fast = fast;
+            pacer = Pacer::new();
+        }
         if powered && !console.stopped {
-            // With sound, run frames until about 70 ms are queued (at most
-            // 4 at a time); without, one frame per window update. Fast:
-            // as many frames as fit in 15 ms, with the sound dropped.
+            // Normally the frames real time has made due (at most 4 at a
+            // time); fast: as many as fit in 15 ms, with the sound dropped.
             let started = std::time::Instant::now();
             for ran in 0.. {
                 let more = if fast {
                     started.elapsed() < std::time::Duration::from_millis(15)
                 } else {
-                    match &sound {
-                        Some(s) => ran < 4 && s.queued() < queue_target,
-                        None => ran == 0,
-                    }
+                    ran < 4 && pacer.due() > 0
                 };
                 if !more {
                     break;
                 }
+                pacer.ran();
                 let stop = machine.run_frame();
                 typist.tick(machine);
                 let audio = machine.take_audio();
@@ -1294,6 +1366,13 @@ fn run_window(
                     eprintln!("bk: {e}");
                 }
             }
+            if let Some(s) = &sound
+                && !fast
+            {
+                pacer.trim(s.queued(), s.rate);
+            }
+        } else {
+            pacer = Pacer::new();
         }
         if powered {
             tv_frame(machine, &mut frame, &mut pixels);
@@ -1326,7 +1405,7 @@ fn run_window(
             ar2,
         );
         double_panel(&panel_pixels, &mut pixels[OUT_WIDTH * screen_height..]);
-        let wanted = title(machine.monitor(), typist.pending(), fast, machine);
+        let wanted = title(machine.monitor(), typist.pending(), fast, machine, no_sound);
         if wanted != shown_title {
             window.set_title(&wanted);
             shown_title = wanted;
@@ -1344,6 +1423,30 @@ mod tests {
 
     fn roms_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../roms")
+    }
+
+    /// The pacer starts with the sound queue's worth of frames due, and
+    /// trims its clock against the queue: a full one slows it, an empty one
+    /// speeds it up.
+    #[test]
+    fn the_pacer_fills_the_sound_queue_then_keeps_to_it() {
+        let mut p = Pacer::new();
+        let first = p.due();
+        assert_eq!(
+            first,
+            (Pacer::QUEUE_MS * 1000 / Pacer::FRAME_US as u64),
+            "frames due at the start"
+        );
+        for _ in 0..first {
+            p.ran();
+        }
+        assert_eq!(p.due(), 0);
+        let start = p.start;
+        p.trim(48_000, 48_000); // a second queued: too much
+        assert!(p.start > start);
+        let start = p.start;
+        p.trim(0, 48_000); // nothing queued: too little
+        assert!(p.start < start);
     }
 
     /// `--type` takes Russian letters: РУС, their KOI-7 codes, then ЛАТ.
