@@ -1,0 +1,138 @@
+# Floppy controller ROM КР1801РЕ2-326, 160000-167777: the BK-0010.01's disk
+# driver (by Sayapin, the article says) and boot loader, with an EIS/FIS
+# emulator (EXT) that the article leaves uncommented.
+#
+# From the author's text of the article "Описание прошивки ПЗУ КНГМД
+# КР1801РЕ2-326" (ПК БК No. 5, 1994), a commented disassembly of this ROM:
+# 326.zip from https://gid.pdp-11.net/sources.html (given to gid by Wesha).
+# All 642 of its instructions are here at the addresses it gives. Its names
+# and its routine descriptions, translated.
+#
+# Cell 52, GRAFST in bk0010.ann (the monitor's graphics erase flag),
+# holds this driver's error code (ERRFDD in the source).
+
+code 160022 BOOT0
+head 160022 Automatic boot: try drive 0, then the next ones; with no loader
+head 160022 anywhere, STOP.
+
+code 160042 BOOT1
+head 160042 Boot from the drive given in R0.
+
+code 160052 STOP
+head 160052 Stop the floppy motor and leave.
+
+code 160066 BOOT
+head 160066 Read block 0 (400 words) to 1000 and start it, if it begins with NOP
+head 160066 (240) and its second instruction isn't RESET (a non-system disk).
+
+code 160154 RWSEC
+head 160154 Read or write by track and sector.
+
+code 160156 INIT
+head 160156 Initialize the driver's work area (R3): track table, head and step
+head 160156 delays, precompensation track, retries, 10 sectors a track.
+
+code 160250 RWBLK
+head 160250 Read or write by block number. In: R0 = block, R1 = words (>0 read, <0
+head 160250 write), R2 = address, R3 = the driver's work area, UNIT = drive. Out: C
+head 160250 set on an error, its code in ERRFDD (52).
+
+code 160372 SUBRW
+head 160372 Read or write by sector. In the work area: ADDR = address, WCNT = words
+head 160372 (>0 read, <0 write), SIDE (0 lower, 1 upper), TRK = track, UNIT = drive,
+head 160372 SECTOR.
+
+code 160536 READ
+head 160536 Read an array: start the motor and note the drive.
+
+code 160566 MAIN
+head 160566 The main part of reading or writing an array: seek the track, then work
+head 160566 sector by sector.
+
+code 160724 ERR12
+head 160724 Leave with error 12 (the sectors are the wrong length).
+
+code 160730 ERR
+head 160730 Leave with an error.
+
+code 160734 QUIT
+head 160734 Leave normally.
+
+code 160740 LONG
+head 160740 Long sectors wanted: check what this track has.
+
+code 160746 WORK
+head 160746 The read itself.
+
+code 161362 NEXT
+head 161362 Multi-sector operations: one sector done, take it off the length.
+
+code 161520 ERROR
+head 161520 Leave with the error code (stored in ERRFDD).
+
+code 161534 EXIT
+head 161534 Leave without an error (C cleared in the saved PSW).
+
+code 161540 EXIT1
+head 161540 Restore vector 4 and return.
+
+code 161566 TSTCRC
+head 161566 Check the CRC.
+
+code 161610 RDSEC
+head 161610 Read a sector into the buffer; R1 = words to move.
+
+code 161660 FINDS
+head 161660 Find the sync sequence.
+
+code 161732 STREAD
+head 161732 Start reading.
+
+code 162012 FINDH
+head 162012 Find an address marker.
+
+code 162246 INDEX
+head 162246 Check that a disk is in and count its revolutions (the index pulse).
+
+code 162364 ENGINE
+head 162364 Select the drive and start its motor.
+
+code 162540 SETPTR
+head 162540 Set the FLGPTR pointer to the drive's flag byte.
+
+code 162574 GOTRK
+head 162574 Seek to the track.
+
+code 162652 GOUP
+head 162652 Step the head in (towards the centre): the track number goes up by 1.
+
+code 162676 GODOWN
+head 162676 Step the head out: the track number goes down by 1.
+
+code 162722 STEPHD
+head 162722 One head step, with its delay. (STEP in the source.)
+
+code 163004 GOTO00
+head 163004 Go back to track 0.
+
+code 163072 FRESEC
+head 163072 Skip a sector.
+
+code 163076 FICT
+head 163076 Skip R0 words of data.
+
+code 163154 WRSEC
+head 163154 Write a sector; R1 = words to write.
+
+code 163266 WRMAR
+head 163266 Write a data marker, after R0 words of 4E4E.
+
+code 163360 CORR
+head 163360 Set the write precompensation.
+
+code 163412 FORMAT
+head 163412 Format a track.
+
+name 164022 EXT
+head 164022 Extended arithmetic: an emulator of the EIS and FIS instructions,
+head 164022 entered through vector 10 (reserved instruction).

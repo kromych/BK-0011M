@@ -12,3 +12,393 @@ code 100112 EMTDSP
 head 100112 EMT dispatcher: the EMT instruction's low byte is a byte offset into
 head 100112 the table at 100000. The routine is called with JSR PC; the
 head 100112 dispatcher returns to the program with RTI.
+
+
+# From the commented disassembly of this ROM (017) by Boris F. Frolkin,
+# 1990, put in machine-readable form with Yu. A. Zaltsman in 1991; the
+# monitor itself is by M. I. Dyabin, 1983-85. monitor.zip from
+# https://gid.pdp-11.net/sources.html (given to gid by Wesha). Its names
+# and its routine descriptions, translated; checked against this ROM: 1998
+# of its 1999 instructions are here at the addresses it gives (at 116514 it
+# has BCC where this ROM has BCS).
+
+
+head 100140 EMT 14: initialize the ROM's drivers and the system cells. Out: R0-R4
+head 100140 destroyed.
+
+code 100260 MONIT
+head 100260 Monitor start: stack at 1000, initialize every driver, then call the ROM
+head 100260 at 120000 (FOCAL or BASIC); if there is none, the bus error lands in
+head 100260 VECT4.
+
+code 100300 MON
+head 100300 The monitor's command loop: prompt, read a command and run it.
+
+code 100442 VECT4
+head 100442 Bus error (no reply on the bus) or the STOP key: reset the stack and
+head 100442 return to the monitor.
+
+code 100460 TYPE
+head 100460 Print a string. In: R3 = string, its first byte the length. Out: R3 =
+head 100460 past the string; R0, R2 destroyed.
+
+code 100472 NUM8
+head 100472 Read an octal number from the keyboard into R5 (Enter at once gives 0).
+head 100472 R0 destroyed.
+
+code 100536 READMG
+head 100536 Load a file from tape, asking for its name first. In: R5 = load address.
+head 100536 R0-R3 destroyed.
+
+code 100656 READTL
+head 100656 Load a file from the serial line. In: R5 = load address. R0-R2
+head 100656 destroyed.
+
+name 100720 SOOB1
+head 100720 Messages: SOOB1 "?", SOOB2 "ИМЯ? " (name?), SOOB3 "ОШИБКА" (error), each
+head 100720 with its length first.
+
+name 100724 SOOB2
+
+name 100732 SOOB3
+
+code 100742 EMT4
+head 100742 EMT 4: initialize the keyboard driver. R0 destroyed.
+
+head 101010 EMT 6: read a key. Out: R0 low byte = key code, high byte = 0.
+
+code 101136 VECT60
+head 101136 Keyboard interrupt (vector 60). Keys are handled in the interrupt
+head 101136 itself; РУС, ЛАТ, УСТ and СБР.ТАБ.ПОЗ don't reach KEYEND.
+
+code 101332 TABS
+head 101332 Set or clear a tab stop.
+
+code 101362 VEC274
+head 101362 Keyboard interrupt with АР2 (vector 274). ПОВТ, ИНДСУ, БЛРЕД, ТАБ,
+head 101362 АР2+digit and codes 232, 233, 235, 236 don't reach KEYEND.
+
+code 101636 TABUL
+head 101636 Count the spaces to the next tab stop.
+
+head 101724 EMT 10: read a line from the keyboard. In: R1 = buffer, R2 low = length,
+head 101724 R2 high = terminator. Out: R1 = past the line, R2 = count left.
+
+head 102004 EMT 12: set function key N. In: R0 = N (1-10), R1 = its text, first byte
+head 102004 the length. R0 destroyed.
+
+code 102032 BEEPSL
+head 102032 Update the service line, then go on.
+
+code 102052 BEEP
+head 102052 Beep, then read the keyboard.
+
+code 102124 KEYEND
+head 102124 End of a key's handling: call the user's extra routine (DOPROG) if set.
+
+code 102160 PACKTB
+head 102160 Pack a tab position. Out: R0 = bit mask, R1 = offset into the table.
+
+head 102234 EMT 16: print the character in R0.
+
+code 102370 SIMCUR
+head 102370 Draw character R0 from the font table and move the cursor right.
+
+code 102414 NOEXIT
+head 102414 Keep the current character position on the screen, scrolling up or down
+head 102414 if needed.
+
+code 102566 SCRLTX
+head 102566 Scroll the screen one text line up (R3 = 0) or down (R3 = 1). SCROLL in
+head 102566 Frolkin's listing.
+
+code 102746 SIMBOL
+head 102746 Draw the character whose number in the font table is in R0.
+
+code 103222 INVTCU
+head 103222 Invert the text cursor (the current character position).
+
+code 103310 OTRRED
+head 103310 Editing codes 10, 22-37.
+
+code 103544 KOD30
+head 103544 Code 30: backspace (ЗАБОЙ).
+
+code 103600 KOD26
+head 103600 Code 26: close up the line from the right.
+
+code 103700 KOD27
+head 103700 Code 27: open up the line to the right.
+
+code 103760 KOD23
+head 103760 Code 23: close up the lines from below.
+
+code 104020 KOD24
+head 104020 Code 24: open up the lines below.
+
+code 104066 LENMOV
+head 104066 Count the lines to move, from the one under the cursor to the bottom of
+head 104066 the screen.
+
+code 104130 OTR0
+head 104130 Control codes other than the editing ones (0-7, 11-21).
+
+code 104236 CTRL
+head 104236 With the show-control-codes flag (ИНДСУ) set, draw a control code
+head 104236 instead of acting on it.
+
+code 104244 CTRLIS
+head 104244 Draw a control code.
+
+code 104316 RET9
+
+code 104320 OTR200
+head 104320 Control codes 200-237.
+
+code 104722 KOD214
+head 104722 Code 214: extended memory mode (narrow screen) on or off.
+
+code 104730 NOTRP
+head 104730 Full-screen mode; also entered at initialization.
+
+code 104770 K1
+
+code 105054 K3
+
+code 105074 KOD225
+head 105074 Code 225: text graphics on or off.
+
+code 105232 KOD231
+head 105232 Code 231: clear the rest of the line.
+
+code 105272 KOD233
+head 105272 Code 233: color mode (32 or 64 characters a line) on or off.
+
+code 105500 KOD235
+head 105500 Code 235: invert the whole screen.
+
+code 105564 KODIS
+head 105564 Draw a control code's picture while editing is blocked.
+
+code 105670 EMT16G
+head 105670 EMT 16 in graphics mode (ГРАФ).
+
+code 105744 MOVEGK
+head 105744 Move the graphics cursor.
+
+code 106234 STEPG
+head 106234 Move to the next graphics point: R1 = dx, R2 = dy.
+
+code 106536 ADRG
+head 106536 Work out the address of the byte holding the current point (the source's
+head 106536 marker says 106530).
+
+code 106564 INVGCU
+head 106564 Invert the graphics cursor.
+
+code 106772 NEXTW
+head 106772 Move to the next word on the right.
+
+code 107012 SBOR10
+head 107012 Collect a decimal repeat count for the next direction code into VECLEN.
+
+head 107050 EMT 20: print a string. In: R1 = string, R2 low = length, R2 high =
+head 107050 terminator. Out: R1 = past the string, R2 = count left.
+
+head 107106 EMT 22: put a character in the service line. In: R0 = code (0 clears the
+head 107106 line), R1 = position (0-63).
+
+code 107200 SIMSLU
+head 107200 Draw a character in the service line.
+
+head 107272 EMT 24: move the cursor. In: R1 = X (text 0-63, graphics 0-511; half in
+head 107272 color mode), R2 = Y (text 0-23, graphics 0-239; text 0-3 in extended
+head 107272 memory mode).
+
+head 107502 EMT 26: read the text or graphics cursor's position. Out: R1 = X, R2 = Y
+head 107502 (ranges as for EMT 24).
+
+head 107612 EMT 30: draw (R0 = 1) or erase (R0 = 0) the point R1 = X (0-511; 0-255
+head 107612 in color), R2 = Y (0-239).
+
+code 107626 PIXEL
+head 107626 Draw a point: R1 = X, R2 = Y, R0 = draw (1) or erase (0).
+
+head 107776 EMT 32: draw (R0 = 1) or erase (R0 = 0) a line from the last point to R1
+head 107776 = X, R2 = Y.
+
+code 110270 LINE
+head 110270 Draw a straight run of R4 points.
+
+head 110310 EMT 34: the display's status word. Out: R0 bits 0-15 = the mode flags in
+head 110310 bytes 40-57 (zero or not).
+
+code 110340 SAVESY
+head 110340 Reset the system register and push R4-R0. Called with JSR R4,SAVESY.
+
+code 110346 SAVE
+head 110346 Push R4-R0. Called with JSR R4,SAVE.
+
+code 110362 REST
+head 110362 Pop R0-R4 pushed by SAVE or SAVESY. Called with JSR R4,REST.
+
+code 110376 CLRSCR
+head 110376 Clear the whole screen.
+
+code 110442 MOVG00
+head 110442 Put the graphics cursor in the top left corner.
+
+code 110470 SLUSTR
+head 110470 Redraw the whole service line.
+
+code 110536 SLUIND
+head 110536 Update every indicator in the service line.
+
+code 110572 TYPESL
+head 110572 Draw one mode indicator in the service line: R0 = 0 РУС/ЛАТ, 1
+head 110572 underline, 2 inverse, 3 ИНДСУ, 4 БЛРЕД, 5 ГРАФ/ЗАП/СТИР.
+
+code 111130 TYPETB
+head 111130 Mark the tab stops in the service line.
+
+code 111314 INVCUR
+head 111314 Invert the cursor.
+
+code 111352 MOVCUR
+head 111352 Move the text cursor to the new SIMADR, already set.
+
+code 111374 CLRCUR
+head 111374 Clear the character position under the cursor.
+
+code 111434 NEXT
+head 111434 The address of the byte one raster line down.
+
+code 111450 FULLUP
+head 111450 Fill a screen line upwards, -(R3), with the word R1.
+
+code 111474 FULLDN
+head 111474 Fill a screen line downwards, (R3)+, with the word R1.
+
+code 111516 MOVEUP
+head 111516 Move R2 raster lines at (R1) one text line up.
+
+code 111616 MOVEDN
+head 111616 Move R2 raster lines at (R1) one text line down.
+
+name 111734 INDLAT
+head 111734 Service-line indicator labels (" ЛАТ", " РУС", "ПОДЧ", "ИНВ ", "ИСУ ",
+head 111734 "БЛР ", "ГРАФ", "ЗАП ", "СТИР"), as character numbers in the font table.
+
+name 111740 INDRUS
+
+name 111744 INDPOD
+
+name 111750 INDINW
+
+name 111754 INDISU
+
+name 111760 INDBLR
+
+name 111764 INDGRA
+
+name 111770 INDZAP
+
+name 111774 INDSTI
+
+name 112000 IND
+
+name 112004 MASPOZ
+head 112004 Position masks.
+
+name 112026 CWET
+head 112026 The four colors' masks.
+
+name 112036 TABLE
+head 112036 Character images (the font), 10 bytes each.
+
+head 116076 EMT 36: tape. In: R1 = parameter block (320). Out: the result byte
+head 116076 (321), MASADR (264) and MASLEN (266) = address and length of the file
+head 116076 loaded, MWOZ (301) = return code.
+
+code 116214 VEC4MG
+head 116214 The STOP key during a tape operation.
+
+code 116232 OKOMAG
+head 116232 End of a tape operation.
+
+code 116256 MAGWR
+head 116256 Write a file to tape.
+
+code 116404 SINMAR
+head 116404 Write a pilot of R0 periods (R4, R5 adjust the first), then the marker
+head 116404 and its post-bit. R3 = 177716; R1, R2 kept.
+
+code 116474 OUTBTS
+head 116474 Write 8 sync bits: time for the reader to compare the header (Frolkin:
+head 116474 too little to print the name too).
+
+code 116504 OUTBT
+head 116504 Write R2 bytes from (R1)+ to tape.
+
+code 116512 O
+
+code 116516 OUT0
+head 116516 Write a 0 bit.
+
+code 116544 OUT1
+head 116544 Write a 1 bit.
+
+code 116570 OUTSIN
+head 116570 Write a sync bit (the same as a 0).
+
+code 116622 KONSUM
+head 116622 Checksum of an array. In: R5 = address, R4 = length in bytes. Out: R0 =
+head 116622 the sum.
+
+code 116640 MAGRD
+head 116640 Read a file from tape.
+
+code 116656 I
+
+code 116712 ISKSIN
+head 116712 Find a file's pilot and measure it.
+
+code 117062 I2
+head 117062 Read error: start again from the pilot search.
+
+code 117064 I1
+
+code 117070 INGOL
+head 117070 Read a file's header and compare its name with the one wanted.
+
+code 117154 INMASS
+head 117154 Read the file's data.
+
+code 117260 INBTS
+head 117260 Read an array of bytes, skipping the sync bits first.
+
+code 117336 INBT
+head 117336 Read R2 bytes to (R1)+, stepping by MDELTA.
+
+code 117376 PERIOD
+head 117376 Measure the next bit's period into R4, after skipping a sync bit.
+
+code 117462 EMT40
+head 117462 EMT 40: set the serial line's speed. In: R0 = 0 9600 baud, 1 4800, 2
+head 117462 2400, 3 1200, 4 600, 5 300, 6 150, 7 75, 10 50.
+
+code 117474 EMT42
+head 117474 EMT 42: send the byte in R0 on the serial line.
+
+code 117566 EMT44
+head 117566 EMT 44: receive a byte from the serial line into R0.
+
+code 117704 EMT46
+head 117704 EMT 46: send R2 bytes from R1 on the serial line. Out: R1 += R2, R2 = 0.
+
+code 117722 EMT50
+head 117722 EMT 50: receive R2 bytes to R1 from the serial line. Out: R1 += R2, R2 =
+head 117722 0.
+
+name 117740 SPEED
+head 117740 Serial line speed constants.

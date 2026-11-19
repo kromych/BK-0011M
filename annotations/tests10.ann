@@ -1,0 +1,1017 @@
+# BK-0010 test ROM (МСТД), K1801РЕ1-019, 160000-177577: the test monitor,
+# reached by T in the monitor or P T in FOCAL.
+#
+# From the commented disassembly of this ROM by Dale corporation (Bryansk
+# BK-0010 users' club, 1993-98), 019.zip from
+# https://gid.pdp-11.net/sources.html (given to gid by Wesha). Its names
+# and its descriptions, translated (its remarks on the code's style left
+# out); checked against this ROM: 1904 of its 1927 instructions are here at
+# the addresses it gives, the rest are slips in its text. It calls two
+# routines TEST4 and two RUNTST; they are TEST3 and RUNTS3 here.
+
+code 160000 STARTT
+head 160000 System start: the monitor's T command and FOCAL's P T come here. Enter's
+head 160000 code set to 12, the stack moved to 1000, vectors 4, 10 and 24 taken
+head 160000 over.
+
+code 160100 ENTERT
+
+code 160102 CONT1
+head 160102 Continue the start (from FOCAL's P T and the monitor's T).
+
+code 160142 STWORK
+head 160142 Interactive work starts here; most commands come back here.
+
+code 160174 SET_TS
+head 160174 Switch to the $ТС mode.
+
+code 160212 SET_TD
+head 160212 Switch to the #ТД mode (registers of the СКБК test stand).
+
+code 160250 SET_TK
+head 160250 Switch to the +ТК mode.
+
+code 160306 MONTK
+head 160306 The +ТК mode's command loop.
+
+code 160336 CONT2
+
+code 160362 CONT3
+
+code 160404 NXTDIG
+
+code 160414 CONT4
+
+code 160426 SYMB2
+
+code 160450 MONTS
+head 160450 The $ТС mode's command loop.
+
+code 160462 ALTTAB
+
+code 160470 NXTKEY
+
+code 160540 NODIG
+
+code 160566 STDTAB
+
+code 160604 TSTTAB
+
+code 160622 POSCMP
+
+code 160632 SETTAB
+
+code 160660 TS1
+
+code 160672 INVCMD
+head 160672 Reserved instruction trap (vector 10): print "НК".
+
+code 160676 RETTRP
+
+code 160714 ERRPWR
+head 160714 Power failure trap (vector 24): print "СБОЙ ПИТАНИЯ".
+
+code 160722 HLTTRP
+head 160722 STOP key and bus error (vector 4).
+
+code 161000 CONT5
+
+code 161016 NOTD1
+
+code 161044 STOP
+
+code 161050 SHDTST
+head 161050 Check for an access to the system area (unless the Щ mode is on).
+
+code 161102 SHDOFF
+
+code 161104 STEND
+head 161104 Main exchange with the СКБК test stand.
+
+code 161120 NOPR1
+head 161120 Some tests that clear the testing flag themselves come here.
+
+code 161140 NOPR2
+
+code 161164 NOPR3
+
+code 161200 NOPR4
+
+
+code 161230 NOPR5
+
+code 161234 WAITRP
+
+code 161276 ALL_OK
+
+code 161316 NOPR6
+
+code 161334 CLRBUS
+
+code 161344 NOPR7
+
+code 161404 NOPR8
+
+code 161422 NOPR9
+
+code 161436 NOPR10
+
+code 161454 NOPR11
+
+code 161462 RDSTD2
+
+code 161474 NOPR12
+
+code 161502 W_RUS
+
+code 161516 NOTD2
+
+code 161574 NOPR13
+
+code 161620 NOPR14
+
+code 161634 NOPR15
+
+code 161656 NOPR16
+
+code 161662 WAITVI
+
+code 161670 WAITR2
+
+code 161716 NOPR17
+
+code 161722 RPOFF
+
+code 161736 NOPR18
+
+code 161750 NOPR19
+
+code 162024 NOPR20
+
+code 162036 PRIBUS
+head 162036 Print the test stand's state.
+
+code 162070 SOB1
+
+code 162110 BIT3
+
+code 162142 BIT2
+
+code 162162 END1
+
+code 162200 SOB2
+
+code 162216 NXBIT1
+head 162216 Bus signals: RPLY (СИП), WTBT (БАЙТ), DOUT (ВЫВОД), DIN (ВВОД), SYNC
+head 162216 (СИА).
+
+code 162242 ENDPRI
+
+code 162276 NXBIT2
+head 162276 Bus signals: RPLY (СИП), DIN (ВВОД).
+
+code 162332 NXBIT3
+head 162332 Bus signals: VIRQ (ТПР), IAKO (ППР1).
+
+code 162360 COLS
+head 162360 Mark the columns of the state table.
+
+code 162400 SOB3
+
+code 162422 SOB4
+
+code 162464 HEADER
+head 162464 Print the state tables' headers.
+
+code 162512 SOB5
+
+code 162544 NOINT
+
+code 162550 PRHEAD
+
+code 162560 SOB6
+
+code 162614 EXST1
+head 162614 Exchange with the stand or memory, for the user's commands (checks the Щ
+head 162614 mode).
+
+code 162642 LBYTE
+
+code 162674 NOSHD
+
+code 162712 SELBTE
+
+code 162714 END2
+
+code 163114 READ2
+
+code 162726 WRBTR5
+head 162726 Write the byte in R5 at the address (A).
+
+code 162742 RDB_R0
+head 162742 Read a byte from (R1) into R0.
+
+code 162752 WRT_R5
+head 162752 Write the word R5 at (R1).
+
+code 162760 CONT6
+
+code 162770 PRVAL
+head 162770 Print the value at (R1).
+
+code 163012 WRT_R0
+head 163012 Write the word R0 at (R1).
+
+code 163026 RD_R0
+head 163026 Read a word from (R1) into R0.
+
+code 163042 EXST2
+head 163042 Exchange with the stand or memory, for the tests (no Щ check).
+
+code 163066 NOTD4
+
+code 163104 BYTE1
+
+code 163106 END3
+
+code 163120 TSTEND
+head 163120 Exchange with the stand without printing the header (for the tests).
+
+code 163136 WRT_T
+
+code 163144 CONT7
+
+code 163152 READ_T
+head 163152 Read, for the tests.
+
+code 163176 CONT8
+
+code 163220 OCTAL
+head 163220 Print the octal number in R4 and a space.
+
+code 163226 NX1BIT
+
+code 163260 END4
+
+code 163270 PRINT
+head 163270 Print the zero-terminated string at (R4).
+
+code 163302 END5
+
+code 163304 TSTHEA
+head 163304 Print "ТЕСТ <R1>. ..(R2)..".
+
+code 163344 TEXIT
+head 163344 Print "ТЕСТ <R1> ЗАВЕРШЕН." (test finished).
+
+code 163400 ERRMSG
+head 163400 Print "ОШИБКА ..(R2).." (error).
+
+code 163416 CONT9
+
+code 163422 TCHK
+head 163422 $ТС/#ТД command ".": write a byte at the address, then step it up.
+
+code 163436 NOVAL1
+
+code 163444 CONT11
+
+code 163452 DWTCH
+head 163452 Command ":": write a byte at the address, then step it down.
+
+code 163466 NOVAL2
+
+code 163476 B_RUS
+head 163476 Command "Б": write or read a byte at the address.
+
+code 163512 CONT12
+
+code 163524 CONT10
+
+code 163542 SOB7
+
+code 163546 HBYTE
+
+code 163562 CH_RUS
+head 163562 Command "Ч": restart the test system.
+
+code 163566 G_LAT
+head 163566 Command "G": run a program.
+
+code 163630 C_RUS
+head 163630 Command "Ц": read or write at the address in a loop.
+
+code 163634 I_RUS
+head 163634 Command "И": write or read a word at the address.
+
+code 163650 CONT13
+
+code 163654 NOVAL3
+
+code 163662 ZPT
+head 163662 Command ",": write a word at the address, then step it up.
+
+code 163676 NOVAL4
+
+code 163704 CONT14
+
+code 163712 MINUS
+head 163712 Command "-": write a word at the address, then step it down.
+
+code 163726 NOVAL5
+
+code 163736 ZABOY
+head 163736 Backspace: rub out the last digit.
+
+code 163750 NOVAL6
+
+code 163772 SCH_RU
+head 163772 Command "Щ": lift the protection of the system area.
+
+code 164010 NOTD5
+
+code 164014 A_RUS
+head 164014 Command "А": set or show the address (A).
+
+code 164030 CONT15
+
+code 164034 NOVAL7
+
+code 164056 H_RUS
+head 164056 Command "Х": checksum of an array.
+
+code 164104 SOB8
+
+code 164132 D_RUS
+head 164132 Command "Д": set or show the length (Д).
+
+code 164150 NOVAL8
+
+code 164172 R_RUS
+head 164172 Command "Р": fill from the address over the length with a word.
+
+code 164222 SOB9
+
+code 164236 NOVAL9
+
+code 164242 S_RUS
+head 164242 Command "С": compare arrays from the address over the length.
+
+code 164272 SOB10
+
+code 164306 NXTTST
+
+code 164322 DIFFER
+
+code 164416 SH_RUS
+head 164416 Command "Ш": check the operations with the stand.
+
+
+code 164440 PRINAD
+
+code 164510 L_RUS
+head 164510 Command "Л": dump memory from the address.
+
+code 164542 CONT16
+
+code 164546 SOB11
+
+code 164574 END6
+
+code 164604 NVAL10
+
+code 164610 P_RUS
+head 164610 Command "П": copy an array from the address over the length.
+
+code 164624 CONT17
+
+code 164644 CONT18
+
+code 164660 END7
+
+code 164664 K_EXIT
+head 164664 Command "К": leave the test monitor (МСТД), hardware back to its initial
+head 164664 state.
+
+code 164672 YU_RUS
+head 164672 Command "Ю": switch to the user's command table.
+
+code 164714 TD1
+
+code 164720 O_RUS
+head 164720 Command "О": check RPLY (СИП) on or off.
+
+code 164756 CONT19
+
+code 164762 SIP_ON
+
+code 164770 TXTOUT
+
+code 165010 Z_RUS
+head 165010 Command "З": initialize the СКБК test stand.
+
+code 165022 M_RUS
+head 165022 Command "М": tape operations.
+
+code 165036 NOTD7
+
+code 165050 NXKEY1
+
+code 165064 MATCH
+
+code 165100 MS
+head 165100 "МС": stop the tape motor.
+
+code 165104 CONT20
+
+code 165110 MP
+
+code 165116 MF
+
+code 165160 ENTNAM
+
+code 165174 NXSYM1
+
+code 165234 NOBS1
+
+code 165242 ENTER1
+
+code 165260 ENTADR
+
+code 165270 ENTLEN
+
+code 165300 ENTOCT
+
+code 165310 NXDIG1
+
+code 165340 DOBS
+
+code 165356 NOBS2
+
+code 165406 DIGIT
+
+code 165426 ENTER2
+
+code 165442 ENTOK
+
+code 165446 TR_ON
+head 165446 Tape: start an operation (keeps the parameter block's address).
+
+code 165462 TR_OFF
+
+code 165500 MZ
+head 165500 "МЗ": start the tape motor.
+
+code 165536 MCH
+
+code 165576 WORKTR
+
+code 165644 NOERR1
+
+code 165664 CONT21
+
+code 165670 TREAD
+
+code 165676 FICT
+
+code 165702 CONT22
+
+code 165720 PRFIND
+
+code 165744 JUSTPR
+
+code 165756 PRNAME
+
+code 165762 SOB13
+
+code 165772 BADNAM
+
+code 166000 C_SUB
+head 166000 Routine for the "Ц" command.
+
+code 166006 SOB14
+
+code 166030 NVAL11
+
+code 166044 TEST0
+head 166044 Test 0: the СКБК stand's registers.
+
+code 166162 LOOP1
+head 166162 Run a 1 through both registers, so that a fault shows on an
+head 166162 oscilloscope.
+
+code 166172 SOB15
+
+code 166214 NOERR2
+
+code 166234 RUNTST
+head 166234 Check a cell (address at 42(SP)) with running 0s and 1s.
+
+code 166276 NORD1
+
+code 166314 NOTD8
+
+code 166320 CONT23
+
+code 166364 NORD2
+
+code 166402 NOTD9
+
+code 166406 CONT24
+
+code 166414 TSTBIT
+head 166414 Check a memory cell with a running bit.
+
+code 166420 NXBIT4
+
+code 166450 CONT25
+
+code 166456 CONT26
+
+code 166460 ERRS1
+
+code 166466 TEST4
+head 166466 Test 4: the character generator.
+
+code 166514 SOB17
+
+code 166520 SOB16
+
+code 166526 LOOP2
+
+code 166532 NXSER2
+
+code 166536 NXSER1
+
+code 166600 SOB18
+
+code 166650 SOB20
+
+code 166654 SOB19
+
+code 166664 TEST2
+head 166664 Test 2: the keyboard, entered from $ТС.
+
+code 166710 NOTK
+
+code 166720 LOOP3
+
+code 166742 TEST2K
+head 166742 Test 2: the keyboard, entered from +ТК.
+
+code 167070 NXKEY2
+
+code 167122 CONT27
+
+code 167126 EQU1
+
+code 167130 SOB21
+
+code 167142 READKB
+
+code 167174 WAITRD
+
+code 167206 WAITNR
+
+code 167234 SOB22
+
+code 167270 PART2
+head 167270 Check the letter and digit keys.
+
+code 167616 SOB23
+
+code 167626 NXTSTR
+
+code 167642 NXSYM3
+
+code 167712 NOCR1
+
+code 167722 END8
+
+code 166750 SOB24
+
+code 170002 PRTAB
+head 170002 Print the test's header and the list of keys to test.
+
+code 170076 PRCHAR
+
+code 170110 SOB25
+
+code 170120 NXSYM
+
+code 170150 END9
+
+code 170162 SOB26
+
+code 170174 TSTKYS
+head 170174 Check the keyboard.
+
+code 170200 SOB27
+
+code 170226 EQU2
+
+code 170234 CONT28
+
+code 170254 NOCR2
+
+code 170262 TEST1
+head 170262 Test 1: RAM and ROM.
+
+code 170312 TK1
+
+code 170316 CONT29
+
+code 170362 CONT30
+
+code 170366 CONT31
+
+code 170430 INSTK
+
+code 170434 STKTST
+
+code 170514 CONT32
+
+code 170526 TK2
+
+code 170532 END10
+
+code 170554 SAVSTK
+head 170554 Move the stack to the end of the screen RAM.
+
+code 170606 SOB28
+
+code 170632 RSTSTK
+head 170632 Move the stack back to its place.
+
+code 170644 SOB29
+
+code 170666 TEST6
+head 170666 Test 6: the address bus.
+
+code 170744 END11
+
+code 170754 TEST7
+head 170754 Test 7: the data bus.
+
+code 171130 LOOP4
+
+code 171140 SOB30
+
+code 171160 END12
+
+code 171170 TEST3
+head 171170 Test 3: the I/O port. (Labelled TEST4 in the source, whose own table
+head 171170 calls it TEST3.)
+
+code 171362 LOOP5
+
+code 171372 SOB31
+
+code 171410 END13
+
+code 171426 RUNTS3
+head 171426 Check a cell with a running bit. (RUNTST again in the source.)
+
+code 171432 SOB32
+
+
+code 171476 END14
+
+code 171500 ERRS2
+
+code 171506 ABUSTS
+head 171506 Check the address bus.
+
+code 171534 SOB33
+
+code 171550 NXTAD1
+
+code 171570 CONT33
+
+code 171574 NXTAD2
+
+code 171616 END15
+
+code 171620 ADRERR
+
+code 171646 CONT34
+
+code 171710 BITHDR
+head 171710 Print the header with the bit numbers.
+
+code 171714 SOB34
+
+code 171730 NXBIT5
+
+code 171742 PRBITS
+head 171742 Print R4 as groups of bits.
+
+code 171746 NXBIT6
+
+code 172026 END16
+
+code 172030 RAMTST
+head 172030 Check a stretch of RAM.
+
+code 172062 SOB35
+
+code 172102 SOB36
+
+code 172140 SOB37
+
+code 172160 SOB38
+
+code 172210 SOB39
+
+code 172230 SOB40
+
+code 172262 SOB41
+
+code 172302 SOB42
+
+code 172332 SOB43
+
+code 172346 NXTEST
+
+code 172356 SOB44
+
+code 172402 END17
+
+code 172404 CONT35
+
+code 172412 SOB45
+
+code 172420 RAMERR
+
+code 172450 CLS
+
+code 172510 ROMTST
+head 172510 Check the ROMs.
+
+code 172566 SOB48
+
+code 172606 SOB47
+
+code 172730 ROMCRC
+head 172730 Checksum of a ROM.
+
+code 172744 NOTLST
+
+code 172750 CONT36
+
+code 172752 SOB49
+
+code 173022 SOB50
+
+code 173034 NOROM
+head 173034 Bus error when reading a ROM that isn't there.
+
+code 173102 PRERRS
+head 173102 Print the list of failing bits.
+
+code 173112 PRERR1
+
+code 173120 CONT37
+
+code 173134 SOB54
+
+code 173142 SOB52
+
+code 173154 CONT38
+
+code 173172 SOB53
+
+code 173206 BITNO
+
+code 173222 W_EXIT
+head 173222 Command "В": restart the BK without a hardware reset.
+
+code 173232 TEST5
+head 173232 Test 5: the tape recorder.
+
+code 173254 SOB55
+
+code 173400 SOB56
+
+code 173414 SOB57
+
+code 173532 SOB58
+
+code 173576 CONT39
+
+code 173606 ENTMSG
+head 173606 Wait for the Enter key, with a prompt.
+
+code 173630 END
+
+name 173632 STABTS
+head 173632 $ТС commands prefixed with "Т".
+
+name 173643 STABTD
+head 173643 #ТД commands prefixed with "Т".
+
+name 173654 TABSYM
+head 173654 $ТС and #ТД command letters.
+
+name 173706 TABPP1
+head 173706 The tests' addresses for the +ТК mode.
+
+name 173722 ATABTS
+head 173722 Addresses for the $ТС mode's "Т" commands.
+
+name 173742 ATABTD
+head 173742 Addresses for the #ТД mode's "Т" commands.
+
+name 173762 TABPP2
+head 173762 Addresses for the $ТС and #ТД commands.
+
+name 174044 RUN1TS
+head 174044 Running-1 masks for the stand's control bus test in $ТС (unused register
+head 174044 bits left out).
+
+name 174104 RUN0TS
+head 174104 Running-0 masks for the stand's control bus test in $ТС.
+
+name 174144 RUN1TD
+head 174144 Running-1 masks for the control bus test in #ТД (INIT and HALT always
+head 174144 set).
+
+name 174204 RUN0TD
+head 174204 Running-0 masks for the control bus test in #ТД.
+
+name 174244 RUN1ST
+head 174244 Ordinary running-1 masks.
+
+name 174304 RUN0ST
+head 174304 Ordinary running-0 masks.
+
+name 174344 SHDTXT
+head 174344 Messages.
+
+name 174351 NK_TXT
+
+name 174357 PWRTXT
+
+name 174377 HANG
+
+name 174445 TEST
+
+name 174455 KONTR
+
+name 174470 RAMROM
+
+name 174502 RAM
+
+name 174510 ROM
+
+name 174517 KEYBD
+
+name 174535 IFACE
+
+name 174552 TAPRCD
+
+name 174570 TAPREC
+
+name 174607 ENDLSS
+
+name 174626 ERROR
+
+name 174636 EXITS
+
+name 174652 MODULE
+
+name 174667 NA
+
+name 174707 RECORD
+head 174707 Test 5's messages.
+
+name 174726 PRESSR
+
+name 175006 PRESSO
+
+name 175056 REWIND
+
+name 175113 PRESSP
+
+name 175160 PRSSEN
+
+name 175201 READNG
+
+name 175217 CHARS1
+head 175217 Key tables for test 2.
+
+name 175303 CHARS6
+
+name 175307 CHARS2
+
+name 175313 CHARS3
+
+name 175317 CHARS4
+
+name 175323 CHARS5
+
+name 175327 BYTHDR
+head 175327 Messages of the running-bit tests.
+
+name 175364 RUN1
+
+name 175400 RUN0
+
+name 175414 PRESS
+head 175414 Test 2's messages.
+
+name 175427 KEY
+
+name 175466 LATZGL
+
+name 175511 STR
+
+name 175524 SHIFT
+
+
+name 175551 CHARS7
+head 175551 Arrows.
+
+name 175571 SU
+
+name 175603 AR2
+
+name 175651 LOOP
+
+name 175673 CHANN
+
+name 175712 PRESSK
+
+
+
+name 176047 LENS
+head 176047 Lengths of the key names (test 2).
+
+name 176070 FOUND
+head 176070 Messages for the МЧ and МФ commands.
+
+name 176110 LOADED
+
+name 176130 STAFT
+
+name 176156 KEYS
+head 176156 Names and codes of the control keys (test 2).
+
+name 176275 CODES
+
+name 176316 SIPTXT
+head 176316 "СИП СНЯТ" (RPLY gone).
+
+name 176326 ADRDAT
+head 176326 Header of the bus state table for read/write cycles.
+
+name 176571 VECTR
+head 176571 Header of the bus state table for an interrupt cycle. (VECTOR in the
+head 176571 source.)
+
+name 176770 ADRSS
+head 176770 Reference addresses for test 6.
+
+name 177026 BITS
+head 177026 Header of the failing-bits table.
+
+name 177055 BITNUM
+
+name 177065 STABM
+head 177065 $ТС commands prefixed with "М".
+
+name 177074 ATABM
+head 177074 Addresses for the $ТС "М" commands.
+
+name 177106 ADDR
+head 177106 Prompts for the $ТС "М" commands.
+
+name 177117 LENGTH
+
+
+name 177140 WRT_MG
+head 177140 Test 5's parameter block for writing.
+
+name 177210 RD_MG
+head 177210 Test 5's parameter block for reading.
+
+name 177262 MG_OFF
+head 177262 Tape motor start and stop commands.
+
+name 177264 MG_ON
+
+code 177326 WT_SYM
+
+code 177344 CONT41
+
+code 177362 NORUS1
+
+code 177374 NOLAT
+
+code 177444 NORUS2
+
+code 177476 SEND2
+
+code 177510 SEND1
+
+code 177512 END18

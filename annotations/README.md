@@ -36,6 +36,13 @@ the annotations and the assembler together.
 - `bk0010.ann`: BK-0010 monitor calls. The EMT table is read from the monitor
   ROM; the call meanings marked "checked" are confirmed by a test.
 - `<rom>.ann`: entry points, names and section comments for one ROM.
+  Many names and routine descriptions in `monit10.ann`, `tests10.ann`,
+  `disk_253.ann`, `disk_326.ann`, `disk_327.ann`, `b11m_ext.ann`,
+  `b11m_bos.ann` and the system cells in `bk0010.ann` come from commented
+  disassemblies of these ROMs published on https://gid.pdp-11.net (Boris
+  F. Frolkin's monitor, Dale corporation's test ROM, the ПК БК article on
+  ROM 326, gid's own), translated; each file's header names its source and
+  how well it matched the ROM.
 - `software/<program>.ann`: optional notes for one program; `machine bk0011m`
   marks a BK-0011M program (the default is BK-0010; CSIDOS disks default to
   the BK-0011M). A folder's or disk's file (`software/miami-cobra.ann`,

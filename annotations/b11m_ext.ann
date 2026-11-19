@@ -11,3 +11,167 @@ head 120002 Keyboard monitor, entered from BOS at 140766 (MONITR).
 text 132372 131 BANNER ; power-on banner, printed by the BOS cold start
 head 132372 Power-on banner: ESC Y (cursor position), a box of pseudo-graphic
 head 132372 characters, "Монитор БК-0011 В1.8" (Monitor BK-0011 v1.8), zero-terminated.
+
+
+# From gid's partial IDA disassembly of the BK-0011M system ROMs 324 and 325
+# ("Попытка дизассемблирования ПЗУ БОС БК0011М", 324_diz.7z from
+# https://gid.pdp-11.net/misc.html); its input's MD5 is that of
+# b11m_ext.rom and b11m_bos.rom together, and 4112 of its instructions
+# match these ROMs. Its names (long ones shortened to six characters, the
+# source's given) and its comments, translated; where this file or
+# bk0011m.ann already names an address, from the BOS manual, that name stays.
+
+code 120000 BS5BGN
+
+code 120006 CMDCNT
+head 120006 The keyboard monitor's command loop.
+
+code 120154 CMDERR
+head 120154 A command error.
+
+code 120204 OUTPRM
+head 120204 Print the monitor's prompt.
+
+code 120230 CM$SBR
+head 120230 Command СБР: clear the screen.
+
+code 120236 BS$SUB
+
+code 120250 CM$BS
+head 120250 Command ЗАБОЙ (backspace): drop the last digit typed.
+
+code 120302 CM$SPC
+head 120302 Command space: a separator.
+
+code 120306 JM$CNT
+
+code 120310 CM$SUE
+head 120310 Command СУ/Е: immediate mode, used to set up the screen driver.
+
+code 120332 CM$PL
+head 120332 Command "+": a range separator.
+
+code 120340 CM$MI
+head 120340 Command "-": a range separator.
+
+code 120370 CM$S$
+head 120370 Command "S": the PSW can be given.
+
+code 120412 CM$B$
+head 120412 Command "B": boot from the drive given.
+
+code 120434 CM$R$
+head 120434 Command "R": registers can be given.
+
+code 120450 CM$SCL
+head 120450 Command ";": a parameter separator.
+
+code 120526 CM$SLH
+head 120526 Command "/": open the word at the address given, or a register.
+
+code 120534 CM$BSL
+head 120534 Command "\": open the byte at the address given.
+
+code 120652 JM$OAR
+
+code 120656 JM2CNT
+
+code 120662 CM$ENT
+head 120662 Command ВВОД (Enter): close the word, byte or register.
+
+code 120670 CM$DN
+head 120670 Command down arrow: close the current cell or register and open the
+head 120670 next.
+
+code 120714 OUTDTA
+
+code 121032 CM$UP
+head 121032 Command up arrow: close the current cell or register and open the one
+head 121032 before.
+
+code 121060 CM$AT
+head 121060 Command "@": close the current cell and go to the address it holds.
+
+code 121110 CM$RT
+head 121110 Command right arrow or "_".
+
+code 121130 CM$LT
+head 121130 Command left arrow: close the current cell and go to the address a BR
+head 121130 there would branch to.
+
+code 121200 OUTARG
+
+code 121276 CM$U$
+head 121276 Command "U": write to tape.
+
+code 121362 CM$M$
+head 121362 Command "M": the tape motor.
+
+code 121374 GETCHR
+
+code 124130 SETKBV
+head 124130 Set the keyboard vectors.
+
+name 124274 JT1B
+head 124274 Jump table for keys handled by MONV60.
+
+code 124314 JT1J7
+
+code 124322 JT1J1
+
+code 124330 JT1J2
+
+code 124336 JT1J3
+
+code 124344 JT1J4
+
+code 124366 JT1J5
+
+code 124374 JT1J6
+
+name 124426 JT2B
+head 124426 Jump table for keys handled by MONV274.
+
+code 124512 JT2J1
+
+code 124550 JT2J2
+
+code 124562 JT2J3
+
+code 124602 JT2J15
+
+code 124610 JT2J8
+
+code 124616 JT2J9
+
+code 124624 JT2J10
+
+code 124632 JT2J11
+
+code 124640 JT2J12
+
+code 124660 JT2J13
+
+code 124722 JT2J14
+
+code 124734 JT2J6
+
+code 124742 JT2J5
+
+code 124766 JT2J16
+
+code 126166 PLUGPG
+head 126166 Map a page into a window. In: R0 low byte = page, high byte = window.
+head 126166 Out: R0 = result code. (PLUGPAGE in the source.)
+
+name 132524 KBMCMD
+head 132524 The keyboard monitor's command letters.
+
+name 133272 ERRTXT
+head 133272 Error messages.
+
+name 133436 FONT
+head 133436 The font.
+
+name 137736 ENDFNT
+head 137736 End of the font.

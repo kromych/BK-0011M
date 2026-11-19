@@ -1,0 +1,135 @@
+# Floppy controller ROM 253, 160000-167777: an earlier version of the disk
+# driver and boot loader, which bk doesn't use.
+#
+# From gid's commented IDA disassembly of this ROM, 253_koi8.zip from
+# https://gid.pdp-11.net/sources.html; its input's MD5 is this ROM's, and
+# all 601 of its instructions are here at the addresses it gives. Its names
+# and its routine descriptions, translated.
+#
+# Cell 52, GRAFST in bk0010.ann (the monitor's graphics erase flag),
+# holds this driver's error code (ERRFDD in the source).
+
+code 160016 BOOT0
+head 160016 Automatic boot: try drive 0, then the next ones; with no loader
+head 160016 anywhere, STOP.
+
+code 160062 BOOT1
+head 160062 Boot from the drive given in R0.
+
+code 160072 STOP
+head 160072 Stop the floppy motor and leave.
+
+code 160120 BOOT
+head 160120 Read block 0 (400 words) to 1000 and start it, if it begins with NOP
+head 160120 (240) and its second instruction isn't RESET (a non-system disk).
+
+code 160216 RWSEC
+head 160216 Read or write by track and sector.
+
+code 160220 INIT
+head 160220 Initialize the driver's work area (R3): track table, head and step
+head 160220 delays, precompensation track, retries, 10 sectors a track.
+
+code 160304 RWBLK
+head 160304 Read or write by block number. In: R0 = block, R1 = words (>0 read, <0
+head 160304 write), R2 = address, R3 = the driver's work area, UNIT = drive. Out: C
+head 160304 set on an error, its code in ERRFDD (52).
+
+code 160422 SUBRW
+head 160422 Read or write by sector. In the work area: ADDR = address, WCNT = words
+head 160422 (>0 read, <0 write), SIDE (0 lower, 1 upper), TRK = track, UNIT = drive,
+head 160422 SECTOR.
+
+code 160566 READ
+head 160566 Read an array: start the motor and note the drive.
+
+code 160572 MAIN
+head 160572 The main part of reading or writing an array: seek the track, then work
+head 160572 sector by sector.
+
+code 160720 ERR12
+head 160720 Leave with error 12 (the sectors are the wrong length).
+
+code 160724 ERR
+head 160724 Leave with an error.
+
+code 160730 QUIT
+head 160730 Leave normally.
+
+code 160734 WORK
+head 160734 The read itself.
+
+code 161344 NEXT
+head 161344 Multi-sector operations: one sector done, take it off the length.
+
+code 161466 VECT4
+head 161466 Bus error (vector 4) during a disk operation.
+
+code 161474 ERROR
+head 161474 Leave with the error code (stored in ERRFDD).
+
+code 161510 EXIT
+head 161510 Leave without an error (C cleared in the saved PSW).
+
+code 161514 EXIT1
+head 161514 Restore vector 4 and return.
+
+code 161542 TSTCRC
+head 161542 Check the CRC.
+
+code 161564 RDSEC
+head 161564 Read a sector into the buffer; R1 = words to move.
+
+code 161634 FINDS
+head 161634 Find the sync sequence.
+
+code 161706 STREAD
+head 161706 Start reading.
+
+code 161732 FINDH
+head 161732 Find an address marker.
+
+code 162106 INDEX
+head 162106 Check that a disk is in and count its revolutions (the index pulse).
+
+code 162224 ENGINE
+head 162224 Select the drive and start its motor.
+
+name 162374 DMASK
+head 162374 Masks that switch the drives on.
+
+code 162400 SETPTR
+head 162400 Set the FLGPTR pointer to the drive's flag byte.
+
+code 162434 GOTRK
+head 162434 Seek to the track.
+
+code 162512 GOUP
+head 162512 Step the head in (towards the centre): the track number goes up by 1.
+
+code 162536 GODOWN
+head 162536 Step the head out: the track number goes down by 1.
+
+code 162562 STEPHD
+head 162562 One head step, with its delay. (STEP in the source.)
+
+code 162634 GOTO00
+head 162634 Go back to track 0.
+
+code 162700 FRESEC
+head 162700 Skip a sector.
+
+code 162704 FICT
+head 162704 Skip R0 words of data.
+
+code 162762 WRSEC
+head 162762 Write a sector; R1 = words to write.
+
+code 163074 WRMAR
+head 163074 Write a data marker, after R0 words of 4E4E.
+
+code 163166 CORR
+head 163166 Set the write precompensation.
+
+code 163220 FORMAT
+head 163220 Format a track.

@@ -45,3 +45,69 @@ name 322 TAPADR ; EMT 36: load address (0 = the file's own)
 name 326 TAPNAM ; EMT 36: file name, 16 characters
 name 346 TAPSTA ; EMT 36: address the file was saved from
 name 350 TAPLEN ; EMT 36: length of the file read
+
+
+# System cells, from the commented disassembly of the monitor ROM 017 by
+# Boris F. Frolkin (1990; the monitor by M. I. Dyabin, 1983-85), monitor.zip
+# from https://gid.pdp-11.net/sources.html. Its names, translated notes.
+name 40 COLOR ; color mode (32 characters a line)
+name 41 INVFON ; inverse background
+name 42 FLAGRP ; extended memory mode (the narrow screen)
+name 43 RUS ; keyboard case: 200 РУС, 0 ЛАТ
+name 44 UNDER ; underline on
+name 45 INVER ; inverse on
+name 46 INDSU ; show control codes (ИНДСУ)
+name 47 BLRED ; editing blocked (БЛРЕД)
+name 50 GRAF ; graphics mode (ГРАФ)
+name 51 GRAFZP ; graphics: draw mode (ЗАП)
+name 52 GRAFST ; graphics: erase mode (СТИР)
+name 53 COLORS ; color mode in the service line
+name 54 UNDERS ; underline in the service line
+name 55 INVERS ; inverse in the service line
+name 56 CURSOF ; cursor off
+name 104 KEYBUF ; byte: the last key's code
+name 105 KEYON ; byte: a code is waiting in KEYBUF
+name 106 KPAUZA ; key repeat delay
+name 110 KEYREP ; byte: key repeat flag
+name 111 KTAB ; byte: tab counter
+name 112 KTABFL ; tab stops, 64 bits
+name 122 KLCNT ; byte: characters left of the function key being typed
+name 124 KLADR ; address of that key's next character
+name 126 KLTABL ; function keys' texts, 10 addresses
+name 152 RULONO ; byte: scrolling broken off
+name 153 TFLAG ; byte: draw or erase the point or line
+name 154 TMASK ; byte: the graphics point's bit mask
+name 155 TMASKN ; byte: the initial bit mask
+name 156 SIMNOM ; the current character's number on the screen
+name 160 SIMADR ; address of the current character's top byte
+name 162 SIMLEN ; a character's width in bytes (the cursor's step)
+name 164 SIMMAX ; characters on the screen (3000 full, 400 narrow)
+name 166 TADLOG ; the graphics point's address on the screen
+name 170 TADR ; the graphics point's address in memory
+name 172 VECLEN ; graphics vector length
+name 174 TVSTR ; raster line counter
+name 176 BUFX ; X of the last point (EMT 30, EMT 32)
+name 200 BUFY ; Y of the last point
+name 202 TVADR ; start of the screen memory
+name 204 TVBAZA ; screen memory base (2000 at first)
+name 206 TVLEN ; screen memory length
+name 210 TVGRAF ; graphics memory length
+name 212 TVFON ; screen background
+name 214 TVEKR ; screen foreground
+name 216 TVFONS ; service line background
+name 220 TVEKRS ; service line foreground
+name 222 TVCNT ; code counter
+name 224 TVIND ; indicator update counter
+name 254 TCONST ; serial line: bit length
+name 260 DOPROG ; the user's routine called after each key (0 = none)
+name 262 KODBK ; the Enter key's code: 12 if 0, 15 if not
+name 264 MASADR ; address of the file just loaded
+name 266 MASLEN ; length of the file just loaded
+name 300 MFAZA ; byte: tape signal phase (377 = inverted)
+name 301 MWOZ ; byte: tape driver return code
+name 302 MFICT ; nonzero: a dummy read (skip the data)
+name 304 MDELTA ; address step while reading
+name 306 MBLOK ; address of the tape parameter block
+name 310 MSAVSP ; saved SP
+name 312 MSUM ; dummy read target, then the checksum
+name 314 MCONST ; sync pulse length x 1.5 (36 at the normal speed)

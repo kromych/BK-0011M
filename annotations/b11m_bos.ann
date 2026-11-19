@@ -54,3 +54,177 @@ head 152112 EMT numbers go to the user's handler in EMTUSR (166), or print an
 head 152112 error and enter the monitor.
 note 152132 caller's C flag -> C
 note 152144 C -> saved PSW
+
+
+# From gid's partial IDA disassembly of the BK-0011M system ROMs 324 and 325
+# ("Попытка дизассемблирования ПЗУ БОС БК0011М", 324_diz.7z from
+# https://gid.pdp-11.net/misc.html); its input's MD5 is that of
+# b11m_ext.rom and b11m_bos.rom together, and 4112 of its instructions
+# match these ROMs. Its names (long ones shortened to six characters, the
+# source's given) and its comments, translated; where this file or
+# bk0011m.ann already names an address, from the BOS manual, that name stays.
+
+code 140502 TT4T1
+
+code 140550 TT4T2
+
+code 140772 TT4T3
+
+code 141042 CM$G$
+head 141042 Monitor command "G": run a program from the address given.
+
+code 141072 CM$P$
+head 141072 Monitor command "P": go on with the program from where it was stopped.
+
+code 141216 CM$STP
+head 141216 Monitor command ШАГ: run one instruction of the program and come back to
+head 141216 the monitor.
+
+code 141246 CM$C$
+head 141246 Monitor command "C": map the page given into the window given.
+
+code 141650 OUT8WB
+head 141650 Print an octal number. In: R0 = the number; C clear for a word, set for
+head 141650 a byte.
+
+code 141750 CM$L$
+head 141750 Monitor command "L": load from tape.
+
+code 142602 TT4T4
+
+code 142722 WRUSRW
+head 142722 Write a word in the user's address space. In: R5 = address, R0 = the
+head 142722 word. (WRITEWORDUSER in the source.)
+
+code 142746 WRUSRB
+head 142746 Write a byte in the user's address space. In: R5 = address, R0 = the
+head 142746 byte. (WRITEBYTEUSER.)
+
+code 142772 RDUSRW
+head 142772 Read a word from the user's address space. In: R5 = address. Out: R0.
+head 142772 (READWORDUSER.)
+
+code 143016 RDUSRB
+head 143016 Read a byte from the user's address space. In: R5 = address. Out: R0.
+head 143016 (READBYTEUSER.)
+
+code 143644 BEEP
+head 143644 A beep.
+
+code 143654 SOUND
+
+code 143712 CLRSCR
+head 143712 Fill the screen with the background color.
+
+code 146446 CURSOR
+
+code 146530 OCUW64
+head 146530 Draw the cursor in 64-character mode.
+
+code 146552 OCUW80
+
+code 146634 OCUW32
+head 146634 Draw the cursor in 32-character or double-width mode.
+
+code 147114 MONV60
+head 147114 Keyboard interrupt (vector 60).
+
+code 147124 MONV274
+head 147124 Keyboard interrupt with АР2 (vector 274).
+
+code 147304 KBBEEP
+head 147304 The key click.
+
+code 147650 CKBRST
+head 147650 Initialize the keyboard buffer.
+
+code 150354 TT4ROT
+
+code 151576 TT4EDS
+
+code 154544 MOTOFF
+head 154544 Stop the tape motor. (MOTOROFF$ in the source.)
+
+code 154554 MOTCTL
+head 154554 Tape motor: R0 = 0 off, otherwise on. (MOTORCTRL$.)
+
+name 154752 B10OPT
+head 154752 The BK-0010 tape format's operations. (B10OPTBL.)
+
+code 154762 TT4B10
+
+code 155076 CHKSUM
+head 155076 Checksum. In: R1 = array, R2 = its length in bytes. Out: R0 = the sum.
+head 155076 (CALCCHKSUM.)
+
+code 155134 MOTON
+head 155134 Start the tape motor. (MOTORON$.)
+
+code 155150 B10CM0
+head 155150 Write a file.
+
+code 155316 OUTSYN
+head 155316 Write the pilot and the sync pulse. In: R0 = length, R4 and R5 = the
+head 155316 half-periods. (OUTSYNCRO$.)
+
+code 155406 SAVBLK
+head 155406 Write a block of data after a buffer sequence. In: R1 = block, R2 =
+head 155406 length. (SAVEBLOCK$.)
+
+code 155424 SAVBL1
+head 155424 Write a block of data. In: R1 = block, R2 = length. (SAVEBLK1$.)
+
+code 155432 OUTBYT
+head 155432 Write a byte. (OUTBYTE$.)
+
+code 155464 OUTBT1
+head 155464 Write a 1 bit (+1, -1). (OUTBIT1$.)
+
+code 155546 B10CM3
+
+code 155554 B10CM2
+
+code 155560 B10CM1
+head 155560 Read a file.
+
+code 155662 FNDFIL
+head 155662 Find the start of a file. (FINDFILEBEGIN$.)
+
+code 156042 RDHEAD
+head 156042 Read a file's header and compare its name. Out: C if the name differs.
+head 156042 (READHEADER$.)
+
+code 156126 RDFILE
+head 156126 Read a file. (READFILE$.)
+
+code 156254 GETADR
+head 156254 The file's load address into R1. (GETREADADDR$.)
+
+code 156270 RDBLK
+head 156270 Read a block after its buffer sequence. In: R1 = address, R2 = length in
+head 156270 bytes. (READBLOCK$.)
+
+code 156350 RDBLK1
+head 156350 Read a block. In: R1 = address, R2 = length in bytes. (READBLK1$.)
+
+code 156420 PULSE
+head 156420 Measure a pulse: its length into R4. (CALCPULSE$.)
+
+code 156504 B10PGS
+head 156504 Set up the pages for the BK-0010 tape format. (SETB10PAGES$.)
+
+name 157346 KBMPRM
+head 157346 The keyboard monitor's prompt.
+
+name 157506 ROMPGM
+
+name 157513 MPGMW0
+
+name 157523 MPGMW1
+
+name 157533 ILLJMR
+
+name 157574 ILLEMT
+
+name 157672 CMDSUB
+head 157672 Monitor command ШАГ (step).

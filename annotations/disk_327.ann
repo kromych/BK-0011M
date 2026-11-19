@@ -9,3 +9,322 @@ code 160006 BSECT ; .BSECT: read/write by track and sector
 code 160010 BDINI ; .BDINI: initialize the floppy driver
 code 160012 BFORM ; .BFORM: format a track
 head 160000 Driver entry points (BOS manual §3), each a branch or jump.
+
+
+# From gid's commented IDA disassembly of this ROM ("326v12", also called
+# 327v12: 326 with a small debugger and drives above 3), 326v12.zip from
+# https://gid.pdp-11.net/sources.html; its input's MD5 is this ROM's, and
+# all 1355 of its instructions are here at the addresses it gives. Its
+# names and its routine descriptions, translated.
+
+
+code 160022 BOOT0
+head 160022 Automatic boot: try drive 0, then the next ones; with no loader
+head 160022 anywhere, STOP.
+
+code 160042 BOOT1
+head 160042 Boot from the drive given in R0.
+
+code 160052 STOP
+head 160052 Stop the floppy motor and leave.
+
+code 160066 BOOTC
+head 160066 Boot and start the loader: the setup first (BOOTC$), then BOOTN.
+
+code 160102 BOOTN
+head 160102 Read block 0 to 1000; if it is a loader (NOP first, no RESET second),
+head 160102 start it (RUNLDR).
+
+code 160154 RWSEC
+head 160154 Read or write by track and sector.
+
+code 160156 INIT
+head 160156 Initialize the driver's work area (R3): track table, head and step
+head 160156 delays, precompensation track, retries, 10 sectors a track.
+
+code 160250 RWBLK
+head 160250 Read or write by block number. In: R0 = block, R1 = words (>0 read, <0
+head 160250 write), R2 = address, R3 = the driver's work area, UNIT = drive. Out: C
+head 160250 set on an error, its code in ERRFDD (52).
+
+code 160372 SUBRW
+head 160372 Read or write by sector. In the work area: ADDR = address, WCNT = words
+head 160372 (>0 read, <0 write), SIDE (0 lower, 1 upper), TRK = track, UNIT = drive,
+head 160372 SECTOR.
+
+code 160536 READ
+head 160536 Read an array: start the motor and note the drive.
+
+code 160566 MAIN
+head 160566 The main part of reading or writing an array: seek the track, then work
+head 160566 sector by sector.
+
+code 160724 ERR12
+head 160724 Leave with error 12 (the sectors are the wrong length).
+
+code 160730 ERR
+head 160730 Leave with an error.
+
+code 160734 QUIT
+head 160734 Leave normally.
+
+code 160740 LONG
+head 160740 Long sectors wanted: check what this track has.
+
+code 160746 WORK
+head 160746 The read itself.
+
+code 161362 NEXT
+head 161362 Multi-sector operations: one sector done, take it off the length.
+
+code 161512 VECT4
+head 161512 Bus error (vector 4) during a disk operation.
+
+code 161520 ERROR
+head 161520 Leave with the error code (stored in ERRFDD).
+
+code 161534 EXIT
+head 161534 Leave without an error (C cleared in the saved PSW).
+
+code 161540 EXIT1
+head 161540 Restore vector 4 and return.
+
+code 161566 TSTCRC
+head 161566 Check the CRC.
+
+code 161610 RDSEC
+head 161610 Read a sector into the buffer; R1 = words to move.
+
+code 161660 FINDS
+head 161660 Find the sync sequence.
+
+code 161732 STREAD
+head 161732 Start reading.
+
+code 162012 FINDH
+head 162012 Find an address marker.
+
+code 162034 FH2$
+
+code 162074 BOOTC$
+head 162074 The setup for BOOTC: the work area at 2000, initialized, the drive
+head 162074 number stored.
+
+code 162246 INDEX
+head 162246 Check that a disk is in and count its revolutions (the index pulse).
+
+code 162364 ENGINE
+head 162364 Select the drive and start its motor.
+
+name 162534 DMASK
+head 162534 Masks that switch the drives on.
+
+code 162540 SETPTR
+head 162540 Set the FLGPTR pointer to the drive's flag byte.
+
+code 162574 GOTRK
+head 162574 Seek to the track.
+
+code 162652 GOUP
+head 162652 Step the head in (towards the centre): the track number goes up by 1.
+
+code 162676 GODOWN
+head 162676 Step the head out: the track number goes down by 1.
+
+code 163004 GOTO00
+head 163004 Go back to track 0.
+
+code 163072 FRESEC
+head 163072 Skip a sector.
+
+code 163076 FICT
+head 163076 Skip R0 words of data.
+
+code 163154 WRSEC
+head 163154 Write a sector; R1 = words to write.
+
+code 163266 WRMAR
+head 163266 Write a data marker, after R0 words of 4E4E.
+
+code 163360 CORR
+head 163360 Set the write precompensation.
+
+code 163412 FORMAT
+head 163412 Format a track.
+
+code 164022 EXT$V4
+head 164022 Extended arithmetic, entered from vector 4.
+
+code 164040 EXT
+head 164040 Extended arithmetic: an emulator of the EIS and FIS instructions,
+head 164040 entered through vector 10 (reserved instruction).
+
+code 164112 ERRCM$
+head 164112 Not an EIS/FIS instruction: restore the registers and pass the trap on.
+
+code 164122 RSTRS$
+head 164122 Set the condition codes and restore the registers.
+
+code 164134 RESTR$
+head 164134 Restore the registers.
+
+code 164156 IMUL32
+head 164156 Multiply: R0:R1 = R3:R4 * R5.
+
+code 164214 FLOAT$
+head 164214 FIS instructions.
+
+name 164274 OFSTBL
+
+code 164304 FDIV$
+head 164304 FDIV: A = A / B.
+
+code 164440 F3$
+
+code 164452 FMUL$
+head 164452 FMUL: A = A * B.
+
+code 164644 SEPAR
+head 164644 Split a floating-point number into its exponent and mantissa.
+
+code 164676 FSUB$
+head 164676 FSUB: A = A - B, done as A + (-B).
+
+code 164706 FADD$
+head 164706 FADD: A = A + B.
+
+code 165134 NRRT$
+head 165134 Normalize: shift the mantissa right.
+
+code 165156 NRLT$
+head 165156 Normalize: shift the mantissa left.
+
+code 165244 FL$NZ$
+head 165244 Set N and Z.
+
+code 165342 FERR$
+head 165342 Set C (an error).
+
+code 165346 F5$
+
+code 165352 F6$
+
+code 165416 EXTAR$
+head 165416 EIS instructions.
+
+name 165526 EPCBS2
+
+code 165546 ADDR23
+head 165546 Operand addressing: autoincrement.
+
+code 165560 ADDR45
+head 165560 Operand addressing: autodecrement.
+
+code 165570 ADDR67
+head 165570 Operand addressing: index.
+
+code 165606 ADDR01
+head 165606 Operand addressing: register.
+
+code 165610 ARROP$
+
+name 165634 OFSTB2
+
+code 165646 MUL$
+head 165646 MUL: R:R+1 = R * src.
+
+code 165756 DIV$
+head 165756 DIV: R = R:R+1 / src, R+1 = the remainder.
+
+code 166176 SRCASH
+head 166176 Get R and the shift count for ASH/ASHC. Out: R0 = R, R5 = count, R2 = 0;
+head 166176 Z if the count is 0, C for a right shift.
+
+code 166230 ASH$
+head 166230 ASH: R shifted left or right by src.
+
+code 166266 ASHC$
+head 166266 ASHC: R:R+1 shifted left or right by src.
+
+code 166324 XOR$
+head 166324 XOR: dst = dst xor R.
+
+code 166330 EARX4$
+head 166330 Finish ASH/ASHC: R0:R1 = result, R5 = flags, R2 = overflow (V).
+
+code 166342 EARX1$
+head 166342 Finish an EIS instruction: R0:R1 = result, R5 = flags.
+
+code 166364 EARX2$
+
+code 166370 EARX3$
+
+code 166450 DBGBGN
+head 166450 The debugger: start, with the stack reset.
+
+code 166500 DB1$
+
+code 166746 REPKEY
+head 166746 Read a key, with autorepeat.
+
+code 167036 OUT8
+head 167036 Print the number in R2 (destroyed).
+
+code 167102 DB2$
+head 167102 The debugger, continued.
+
+name 167202 AA
+
+code 167312 DB3$
+
+name 167316 DBGTTL
+head 167316 The debugger's title.
+
+code 167344 DEBUGR
+head 167344 The debugger: say so, then take commands.
+
+code 167362 DB4$
+
+name 167370 DBGHLP
+head 167370 The debugger's help.
+
+code 167410 DB5$
+
+code 167424 JL5$
+
+code 167454 JL7$
+
+code 167456 JL2$
+
+code 167462 JL8$
+
+code 167464 JL11$
+
+code 167466 JL9$
+
+name 167503 FDDTTL
+head 167503 "FDD/HDD BIOS 327 V12 (c) JD/DWG!"
+
+code 167546 JL1$
+
+code 167566 JL4$
+
+code 167576 BOOT
+head 167576 Boot, doing more besides: it computes the driver's checksum and starts
+head 167576 the timer, jumping back and forth (to confuse a reader, the source
+head 167576 suspects).
+
+code 167630 DB6$
+head 167630 A piece of the debugger, wedged in here.
+
+code 167646 JL6$
+
+code 167674 JL10$
+
+code 167704 RUNLDR
+head 167704 Start the loader just read: stack set, drive number in R0.
+
+code 167716 SETPT1
+head 167716 Part of SETPTR.
+
+code 167732 JL3$
