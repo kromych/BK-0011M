@@ -371,13 +371,19 @@ impl Machine {
     /// Put a tape in the recorder; it plays while the BK runs the motor.
     pub fn insert_tape(&mut self, tape: Option<TapeSignal>) {
         self.board.tape_in = tape;
-        self.board.tape_rolling = false;
+        // A recorder without motor control, once started, stays in play:
+        // the next cassette plays at once (a game that asks for its next
+        // part needn't run the motor again).
+        if self.board.motor_control {
+            self.board.tape_rolling = false;
+        }
     }
 
     /// Whether the recorder is wired to the BK's motor relay (yes at
     /// first). Without it, once the BK first runs the motor the tape plays
-    /// on to its end, as on a recorder started by hand: some protected
-    /// tapes stop the motor in the middle of a load and expect that.
+    /// on to its end, as on a recorder started by hand, and a tape put in
+    /// after that plays at once: some protected tapes stop the motor in
+    /// the middle of a load and expect that.
     pub fn set_motor_control(&mut self, on: bool) {
         self.board.motor_control = on;
     }

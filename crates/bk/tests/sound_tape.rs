@@ -723,6 +723,12 @@ fn without_motor_control_the_tape_plays_on() {
         } else {
             assert!(at > 1.9, "the tape played on: {at} s");
             assert!(m.tape_busy());
+            // The recorder stays in play: the next tape plays at once,
+            // though the motor stays off.
+            m.insert_tape(Some(bk::encode_tape("NEXT", &file).unwrap()));
+            frames(&mut m, 50);
+            let (next, _) = m.tape_time().unwrap();
+            assert!(next > 0.9, "the next tape plays: {next} s");
         }
     }
 }

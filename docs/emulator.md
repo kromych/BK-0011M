@@ -89,7 +89,7 @@ Hardware options:
 | `--irq2-50hz` | BK-0010: a 50 Hz interrupt on vector 100, once a program has set the vector (for FOCAL's `FCLK()`, see [focal.md](focal.md#fclk)) |
 | `--mute` | no sound |
 | `--tape-sound` | hear the tape being read, as from the cassette recorder's speaker; the tape then plays at its real speed. In the window, Alt+T (Cmd+T) switches it |
-| `--no-motor-control` | a recorder not wired to the BK's motor relay: once the BK first runs the motor, the tape plays to its end whatever the BK does. Several protected tapes stop the motor in the middle of a load and need this. Alt+R (Cmd+R) switches it |
+| `--no-motor-control` | a recorder not wired to the BK's motor relay: once the BK first runs the motor, the tape plays to its end whatever the BK does, and the next recording opened plays at once. Several protected tapes stop the motor in the middle of a load and need this. Alt+R (Cmd+R) switches it |
 | `--invert-tape` | invert the recording's signal. The ROM reads either polarity; some protected loaders read only one. Alt+I (Cmd+I) switches it |
 
 The color/mono switch matters: the BK has one video mode of 512 × 256 dots
